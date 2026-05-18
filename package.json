@@ -1,0 +1,27 @@
+{
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "db:generate": "drizzle-kit generate && bun run src/db/gen-types.ts",
+    "db:migrate": "drizzle-kit migrate"
+  },
+  "dependencies": {
+    "@octokit/rest": "^22.0.1",
+    "@valibot/to-json-schema": "^1.7.0",
+    "better-sqlite3": "^12.10.0",
+    "drizzle-kit": "^0.31.10",
+    "drizzle-orm": "^0.45.2",
+    "jsonrepair": "^3.14.0",
+    "kysely": "^0.29.2",
+    "simple-git": "^3.36.0",
+    "ts-node": "^10.9.2",
+    "valibot": "^1.4.0"
+  },
+  "name": "truth-engine",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

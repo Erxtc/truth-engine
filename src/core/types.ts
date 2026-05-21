@@ -1,5 +1,28 @@
 export type Domain = "sorting" | "compression" | "math" | "ml" | "physics" | "project";
 
+export type OracleHint =
+	| "unit_tests"
+	| "property_fuzz"
+	| "benchmark"
+	| "lean4_proof"
+	| "qutip_sim"
+	| "custom_sim"
+	| "adversarial"
+	| "code_review";
+
+export interface PlanStep {
+	index: number;
+	goal: string;
+	success_criteria: string;
+	oracle_hint: OracleHint;
+	depends_on: number[];
+}
+
+export interface StepPlan {
+	steps: PlanStep[];
+	rationale: string;
+}
+
 export type ExecutablePayload =
 	| { type: "code"; lang: "js" | "ts" | "python"; source: string }
 	| { type: "proof"; system: "lean4" | "coq"; source: string }
@@ -35,6 +58,8 @@ export interface Verdict {
 	score: number;
 	reason: string;
 	repairs?: string[];
+	advances_step?: boolean;
+	step_assessment?: string;
 }
 
 export interface ExecutionResult {
@@ -54,4 +79,6 @@ export interface WorkingContext {
 	ancestor_proposals: Array<{ hypothesis: string; score: number }>;
 	recent_insights: string[];
 	active_constraints: string[];
+	step_plan: StepPlan | null;
+	current_step: PlanStep | null;
 }

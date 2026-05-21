@@ -1,5 +1,5 @@
 import * as v from "valibot";
-import { queryLlm } from "../llm";
+import { queryLlm, queryReasoning } from "../llm";
 import type { WorkingContext, Proposal } from "../core/types";
 
 export const proposalSchema = v.object({
@@ -38,8 +38,8 @@ const proposalListSchema = v.object({
 
 export async function runProposer(ctx: WorkingContext, count: number): Promise<Proposal[]> {
 	const prompt = buildPrompt(ctx, count);
-	const result = await queryLlm(prompt, proposalListSchema);
-	return result.response.proposals;
+	const result = await queryReasoning({ userPrompt: prompt, schema: proposalListSchema });
+	return result.response;
 }
 
 

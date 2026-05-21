@@ -1,4 +1,3 @@
-import { queryLlm } from "../llm";
 import type { WorkingContext, Proposal, ExecutionResult } from "../core/types";
 import * as v from "valibot";
 import { proposalSchema } from "./proposer";

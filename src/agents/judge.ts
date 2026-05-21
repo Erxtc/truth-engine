@@ -1,5 +1,5 @@
 import * as v from "valibot";
-import { queryLlm } from "../llm";
+import { queryReasoning } from "../llm";
 import type { WorkingContext, Proposal, Critique, Verdict } from "../core/types";
 
 const verdictSchema = v.object({
@@ -15,10 +15,9 @@ const verdictSchema = v.object({
 
 export async function runJudge(ctx: WorkingContext, proposal: Proposal, critiques: Critique[]): Promise<Verdict> {
   const prompt = buildPrompt(ctx, proposal, critiques);
-  const result = await queryLlm(prompt, verdictSchema);
+  const result = await queryReasoning({ userPrompt: prompt, schema: verdictSchema });
   return result.response;
 }
-
 
 function buildPrompt(
   ctx: WorkingContext,

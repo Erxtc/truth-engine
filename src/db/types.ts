@@ -6,6 +6,8 @@ export interface DB {
     domain: string
     description: string
     status: string
+    stepPlan: string | null
+    currentStep: number
     createdAt: number
     updatedAt: number
   }

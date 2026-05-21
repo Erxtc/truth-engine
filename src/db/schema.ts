@@ -13,6 +13,8 @@ export const problems = sqliteTable("problems", {
 	domain: text("domain").notNull(),
 	description: text("description").notNull(),
 	status: text("status", { enum: problemStatuses }).default("open").notNull(),
+	stepPlan: text("stepPlan"),
+	currentStep: integer("currentStep").default(0).notNull(),
 	createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(CURRENT_TIMESTAMP)`),
 	updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().default(sql`(CURRENT_TIMESTAMP)`),
 });

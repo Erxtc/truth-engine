@@ -1,6 +1,6 @@
-import { queryLlm } from "../llm";
 import type { WorkingContext, Proposal } from "../core/types";
 import * as v from "valibot";
+import { queryLlm } from "../llm/perplexity";
 
 const formalizerOutputSchema = v.object({
 	success: v.boolean(),

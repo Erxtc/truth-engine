@@ -1,6 +1,6 @@
 import * as v from "valibot";
-import { queryLlm } from "../llm";
 import type { WorkingContext, Proposal, Critique } from "../core/types";
+import { queryCritic } from "../llm";
 
 const critiqueSchema = v.object({
 	attack_type: v.union([
@@ -24,14 +24,9 @@ const critiqueListSchema = v.object({
 	critiques: v.array(critiqueSchema),
 });
 
-export async function runCritic(
-	ctx: WorkingContext,
-	proposal: Proposal
-): Promise<Critique[]> {
+export async function runCritic(ctx: WorkingContext, proposal: Proposal): Promise<Critique[]> {
 	const prompt = buildPrompt(ctx, proposal);
-	const result = await queryLlm(prompt, critiqueListSchema);
-
-
+	const result = await queryCritic({ userPrompt: prompt, schema: critiqueListSchema });
 	return result.response.critiques;
 }
 

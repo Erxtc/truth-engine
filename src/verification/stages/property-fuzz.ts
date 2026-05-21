@@ -6,16 +6,16 @@ import type { VerificationStage, StageResult } from "../types";
 import type { Artifact } from "../../db/schema";
 
 export const propertyFuzz: VerificationStage = {
-	name: "PropertyFuzz",
-	async run(artifact: Artifact): Promise<StageResult> {
-		const sourceCode = artifact.sourceCode;
-		if (!sourceCode) return { stageName: this.name, passed: false, reason: "No source code", runtimeMs: 0 };
+  name: "PropertyFuzz",
+  async run(artifact: Artifact): Promise<StageResult> {
+    const sourceCode = artifact.sourceCode;
+    if (!sourceCode) return { stageName: this.name, passed: false, reason: "No source code", runtimeMs: 0 };
 
-		const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "truth-fuzz-"));
-		const testFile = path.join(tmpDir, "fuzz.js");
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "truth-fuzz-"));
+    const testFile = path.join(tmpDir, "fuzz.js");
 
-		// Simple fuzzing harness: generate random arrays and check invariants
-		const harnessCode = `
+    // Simple fuzzing harness: generate random arrays and check invariants
+    const harnessCode = `
 ${sourceCode}
 
 function runFuzz(iterations = 500) {
@@ -53,23 +53,23 @@ const result = runFuzz(500);
 console.log(JSON.stringify(result));
     `.trim();
 
-		fs.writeFileSync(testFile, harnessCode);
+    fs.writeFileSync(testFile, harnessCode);
 
-		const start = Date.now();
-		try {
-			const output = execSync(`node ${testFile}`, { timeout: 15000, stdio: "pipe" });
-			fs.rmSync(tmpDir, { recursive: true, force: true });
-			const result = JSON.parse(output.toString().trim());
-			return {
-				stageName: this.name,
-				passed: result.passed,
-				reason: result.passed ? undefined : result.reason,
-				metrics: { iterations: result.iterations || 0 },
-				runtimeMs: Date.now() - start,
-			};
-		} catch (err: any) {
-			fs.rmSync(tmpDir, { recursive: true, force: true });
-			return { stageName: this.name, passed: false, reason: `Fuzz error: ${err.stderr || err.message}`, runtimeMs: Date.now() - start };
-		}
-	}
+    const start = Date.now();
+    try {
+      const output = execSync(`node ${testFile}`, { timeout: 15000, stdio: "pipe" });
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+      const result = JSON.parse(output.toString().trim());
+      return {
+        stageName: this.name,
+        passed: result.passed,
+        reason: result.passed ? undefined : result.reason,
+        metrics: { iterations: result.iterations || 0 },
+        runtimeMs: Date.now() - start,
+      };
+    } catch (err: any) {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+      return { stageName: this.name, passed: false, reason: `Fuzz error: ${err.stderr || err.message}`, runtimeMs: Date.now() - start };
+    }
+  }
 };

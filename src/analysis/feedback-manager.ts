@@ -60,7 +60,7 @@ export async function runFeedbackAnalyzer(kg: KnowledgeGraph, failedArtifactId: 
 	const execRows = await db
 		.selectFrom("executions")
 		.selectAll()
-		.where("artifact_id", "=", failedArtifactId)
+		.where("artifactId", "=", failedArtifactId)
 		.execute();
 
 	const failingStage = execRows.find((ex) => !ex.passed);
@@ -93,9 +93,9 @@ async function runLegislator(kg: KnowledgeGraph, problemId: string) {
 	const deadArtifacts = await db
 		.selectFrom("artifacts")
 		.selectAll()
-		.where("problem_id", "=", problemId)
+		.where("problemId", "=", problemId)
 		.where("status", "=", "dead")
-		.orderBy("created_at", "desc")
+		.orderBy("createdAt", "desc")
 		.limit(20)
 		.execute();
 
@@ -103,10 +103,10 @@ async function runLegislator(kg: KnowledgeGraph, problemId: string) {
 	for (const dead of deadArtifacts) {
 		const insightRels = await db
 			.selectFrom("relations")
-			.innerJoin("artifacts", "relations.target_id", "artifacts.id")
+			.innerJoin("artifacts", "targetId", "artifacts.id")
 			.select("artifacts.title")
-			.where("relations.source_id", "=", dead.id)
-			.where("relations.relation_type", "=", "cites")  // or "generalizes"? TODO: Build how insights will be linked properly
+			.where("sourceId", "=", dead.id)
+			.where("relationType", "=", "cites")  // or "generalizes"? TODO: Build how insights will be linked properly
 			.execute();
 
 		for (const rel of insightRels) {
@@ -122,7 +122,7 @@ async function runLegislator(kg: KnowledgeGraph, problemId: string) {
 			const existing = await db
 				.selectFrom("artifacts")
 				.selectAll()
-				.where("problem_id", "=", problemId)
+				.where("problemId", "=", problemId)
 				.where("type", "=", "constraint")
 				.where("title", "=", title)
 				.executeTakeFirst();

@@ -6,52 +6,52 @@ export interface DB {
     domain: string
     description: string
     status: string
-    created_at: number
-    updated_at: number
+    createdAt: number
+    updatedAt: number
   }
   artifacts: {
     id: string
+    workspacePath: string | null
     type: string
     status: string
-    problem_id: string
-    parent_id: string | null
+    problemId: string
+    parentId: string | null
     depth: number
     score: number
     title: string | null
-    hypothesis_text: string | null
-    formal_statement: string | null
-    source_code: string | null
+    hypothesisText: string | null
+    formalStatement: string | null
+    sourceCode: string | null
     payload: string | null
-    latest_execution_id: string | null
+    latestExecutionId: string | null
     provenance: string | null
-    created_at: number
-    updated_at: number
-    workspace_path: string | null
+    createdAt: number
+    updatedAt: number
   }
   relations: {
     id: string
-    source_id: string
-    target_id: string
-    relation_type: string
+    sourceId: string
+    targetId: string
+    relationType: string
     properties: string | null
-    created_at: number
+    createdAt: number
   }
   executions: {
     id: string
-    artifact_id: string
-    execution_type: string
+    artifactId: string
+    executionType: string
     passed: number
     metrics: string | null
-    error_log: string | null
-    test_results: string | null
-    runtime_ms: number | null
-    created_at: number
+    errorLog: string | null
+    testResults: string | null
+    runtimeMs: number | null
+    createdAt: number
   }
   agent_logs: {
     id: string
-    artifact_id: string | null
-    agent_role: string
-    input_context: string | null
+    artifactId: string | null
+    agentRole: string
+    inputContext: string | null
     response: string | null
     cost: number | null
     timestamp: number

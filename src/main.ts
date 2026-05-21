@@ -33,7 +33,7 @@ async function getLivingCount(problemId: string): Promise<number> {
 	const result = await db
 		.selectFrom("artifacts")
 		.select(db.fn.count("id").as("count"))
-		.where("problemId", "=", problemId)
+		.where("problem_id", "=", problemId)
 		.where("status", "=", "active")
 		.executeTakeFirst();
 	return Number(result?.count ?? 0);

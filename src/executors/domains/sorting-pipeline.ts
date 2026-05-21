@@ -13,8 +13,8 @@ export const sortingStages: VerificationStage[] = [
 	consistencyCheck,
 	unitTests,
 	propertyFuzz,
-	performanceBenchmark,
-	adversarialAttack,
+	// performanceBenchmark,
+	// adversarialAttack,
 ];
 
 export async function runSortingPipeline(

@@ -54,7 +54,7 @@ export class KnowledgeGraph {
 			status: "active",
 			score: 0,
 			depth: input.depth ?? 0,
-			parentId: input.parentId ?? null,
+			parent_id: input.parentId ?? null,
 			...input,
 		};
 

@@ -2,6 +2,7 @@ import type { KnowledgeGraph } from "../db/knowledge-graph";
 import type { WorkingContext } from "./types";
 import type { Artifact } from "../db/schema";
 import { getDomainInvariants } from "./context";
+import { getDomainSpec } from "../executors/domains/registry";
 
 // ── Token budget helpers ──────────────────────────────────────────────────────
 
@@ -191,6 +192,7 @@ export class ContextBuilder {
 		}
 
 		// ── Assemble draft context ────────────────────────────────────────────
+		const domainSpec = getDomainSpec(problem.domain);
 		const ctx: WorkingContext = {
 			domain:             problem.domain,
 			problem:            problem.description,
@@ -204,6 +206,7 @@ export class ContextBuilder {
 			step_plan:          stepInfo?.plan ?? null,
 			current_step:       stepInfo ? (stepInfo.plan.steps[stepInfo.currentStep] ?? null) : null,
 			calibration_example,
+			solution_format:    domainSpec?.solutionFormat,
 		};
 
 		// ── Token budget enforcement ──────────────────────────────────────────

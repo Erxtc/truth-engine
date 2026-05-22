@@ -126,6 +126,7 @@ Return ONLY valid JSON matching the structure above.
 			name: r.domain_name,
 			invariants: r.invariants,
 			requiredConfidence: r.required_confidence as 1 | 2 | 3 | 4,
+			solutionFormat: r.solution_format,
 			async run(proposal: Proposal, _ctx: WorkingContext, artifact: Artifact) {
 				return runCustomOracle(oracleJs, proposal, artifact, r.domain_name);
 			},
@@ -176,6 +177,10 @@ try {
            : typeof main !== 'undefined' ? main
            : null;
   result = verify(fn, null);
+  // Also capture the actual return value for display in the final answer
+  if (result.passed && fn) {
+    try { result.output = JSON.stringify(fn()); } catch(_) {}
+  }
 } catch(e) {
   result = { passed: false, reason: 'Oracle threw: ' + e.message };
 }
@@ -189,10 +194,19 @@ process.stdout.write(JSON.stringify(result));
 		try {
 			fs.writeFileSync(tmpFile, harness);
 			const raw = execSync(`node ${tmpFile}`, { timeout: 15_000, stdio: "pipe" }).toString().trim();
-			const r = JSON.parse(raw) as { passed: boolean; reason: string };
+			const r = JSON.parse(raw) as { passed: boolean; reason: string; output?: string };
+			if (r.passed && r.output !== undefined) {
+				console.log(`  [oracle] Computed output: ${r.output}`);
+			}
 			return {
 				overallPassed: r.passed,
-				stages: [{ stageName: "CustomOracle", passed: r.passed, reason: r.passed ? undefined : r.reason, runtimeMs: Date.now() - start }],
+				stages: [{
+					stageName: "CustomOracle",
+					passed: r.passed,
+					reason: r.passed ? undefined : r.reason,
+					artifacts: r.output !== undefined ? { computed_output: r.output } : undefined,
+					runtimeMs: Date.now() - start,
+				}],
 				finalMetrics: {},
 			};
 		} catch (err: any) {

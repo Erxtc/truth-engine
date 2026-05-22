@@ -12,7 +12,7 @@ import { runFeedbackAnalyzer, runLegislator } from "./analysis/feedback-manager"
 import { db } from "./db/client";
 import type { Proposal, Critique, WorkingContext } from "./core/types";
 import type { Artifact } from "./db/schema";
-import { emit } from "./ui/events";
+import { emit, setRunParamsState } from "./ui/events";
 import { startUiServer } from "./ui/server";
 import { loadConfig, printConfig } from "./cli";
 import { detectOrGenerateDomain } from "./domains/auto-detect";
@@ -134,6 +134,7 @@ async function main() {
 
 	// Keep activeRunParams in sync so the supervisor can read the current state
 	activeRunParams = { ...runParams };
+	setRunParamsState({ ...runParams });
 
 	const effectiveConfidence = runParams.requiredConfidence;
 
@@ -148,7 +149,7 @@ async function main() {
 	// Generate step plan before evolution begins
 	console.log(`[truth-engine] Generating step plan…`);
 	try {
-		const stepPlan = await runPlanner(DOMAIN, ROOT_PROBLEM_DESC.trim(), getDomainInvariants(DOMAIN));
+		const stepPlan = await runPlanner(resolvedDomain, ROOT_PROBLEM_DESC.trim(), getDomainInvariants(resolvedDomain));
 		await kg.setStepPlan(problem.id, stepPlan);
 		emit("planner:done", `${stepPlan.steps.length}-step plan ready`, { detail: stepPlan });
 		console.log(`[truth-engine] Step plan (${stepPlan.steps.length} steps):`);
@@ -233,7 +234,7 @@ async function main() {
 		console.log("\n[truth-engine] Entering consensus phase…");
 		const consensusResult = await runConsensus(
 			{
-				domain: DOMAIN,
+				domain: resolvedDomain,
 				problemDescription: ROOT_PROBLEM_DESC.trim(),
 				numChains: cfg.consensusChains,
 				maxDepth: Math.min(MAX_DEPTH, 4),
@@ -278,6 +279,50 @@ async function main() {
 	console.log("\n[truth-engine] Run complete");
 	const living = await getLivingCount(problem.id);
 	console.log(`Living nodes: ${living}`);
+
+	// ── Print the final answer ────────────────────────────────────────────────
+	const winner = await kg.getBestSurvivor(problem.id);
+	const bar = "═".repeat(60);
+	if (winner) {
+		console.log(`\n${bar}`);
+		console.log("FINAL ANSWER");
+		console.log(bar);
+		if (winner.hypothesisText) {
+			console.log(`\n${winner.hypothesisText}`);
+		}
+		if (winner.sourceCode) {
+			console.log("\n── CODE " + "─".repeat(52));
+			console.log(winner.sourceCode);
+		}
+		console.log(`\n[Score: ${winner.score}/100 | Confidence: ${confidenceLabel(winner.confidenceLevel ?? 0)}]`);
+		console.log(bar);
+	} else {
+		// Fall back to best active hypothesis even if not formally solved
+		const bestActive = await db
+			.selectFrom("artifacts")
+			.selectAll()
+			.where("problemId", "=", problem.id)
+			.where("type", "in", ["hypothesis", "project"])
+			.where("status", "!=", "dead")
+			.orderBy("score", "desc")
+			.limit(1)
+			.executeTakeFirst() as any;
+		if (bestActive?.hypothesisText) {
+			console.log(`\n${bar}`);
+			console.log("BEST ATTEMPT (not fully verified)");
+			console.log(bar);
+			console.log(`\n${bestActive.hypothesisText}`);
+			if (bestActive.sourceCode) {
+				console.log("\n── CODE " + "─".repeat(52));
+				console.log(bestActive.sourceCode);
+			}
+			console.log(`\n[Score: ${bestActive.score}/100 | Confidence: ${confidenceLabel(bestActive.confidenceLevel ?? 0)}]`);
+			console.log(bar);
+		} else {
+			console.log("\n[truth-engine] No solution found for this problem.");
+		}
+	}
+
 	process.exit(0);
 }
 

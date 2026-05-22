@@ -22,6 +22,12 @@ export interface DomainSpec {
 	 * 4 = formally-proven (math / proof domains)
 	 */
 	requiredConfidence: ConfidenceLevel;
+	/**
+	 * Human-readable description of what a valid solution looks like.
+	 * Used to generate executable format rules in the proposer prompt.
+	 * Optional — built-in domains use hardcoded rules in getDomainFormatRules().
+	 */
+	solutionFormat?: string;
 	/** Execute a proposal through the domain's verification pipeline */
 	run(proposal: Proposal, ctx: WorkingContext, artifact: Artifact): Promise<PipelineResult>;
 	/**

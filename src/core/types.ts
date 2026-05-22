@@ -139,6 +139,11 @@ export interface WorkingContext {
 		source_code: string;
 		score: number;
 	};
+	/**
+	 * Human-readable description of what a valid solution looks like.
+	 * Set from DomainSpec.solutionFormat for auto-detected/custom domains.
+	 */
+	solution_format?: string;
 	/** Approximate token count of this context object (diagnostic). */
 	token_budget_used?: number;
 }

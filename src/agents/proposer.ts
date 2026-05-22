@@ -38,7 +38,15 @@ const proposalListSchema = v.object({
 export async function runProposer(ctx: WorkingContext, count: number): Promise<Proposal[]> {
 	const prompt = buildPrompt(ctx, count);
 	const result = await queryReasoning({ userPrompt: prompt, schema: proposalListSchema, temperature: 0.7 });
-	return result.response.proposals;
+	const proposals = result.response.proposals;
+	// Deduplicate by hypothesis text (model occasionally emits the same proposal twice)
+	const seen = new Set<string>();
+	return proposals.filter(p => {
+		const key = p.hypothesis.trim().toLowerCase();
+		if (seen.has(key)) return false;
+		seen.add(key);
+		return true;
+	});
 }
 
 function buildPrompt(ctx: WorkingContext, count: number): string {
@@ -81,7 +89,7 @@ CURRENT TARGET STEP [${ctx.current_step.index}]:
 ${ctx.calibration_example.source_code.slice(0, 800).split("\n").map(l => `    ${l}`).join("\n")}`
 		: "";
 
-	const formatRules = getDomainFormatRules(ctx.domain);
+	const formatRules = getDomainFormatRules(ctx.domain, ctx.solution_format);
 
 	return `
 You are a research proposer in domain: ${ctx.domain} (depth ${ctx.depth})
@@ -137,7 +145,7 @@ Return ONLY valid JSON: { "proposals": [...] }
 `.trim();
 }
 
-function getDomainFormatRules(domain: string): string {
+function getDomainFormatRules(domain: string, solutionFormat?: string): string {
 	switch (domain) {
 		case "sorting":
 			return [
@@ -213,6 +221,15 @@ function getDomainFormatRules(domain: string): string {
 				"- Inference < 100ms per sample",
 			].join("\n");
 		default:
+			if (solutionFormat) {
+				return [
+					`- Solution format: ${solutionFormat}`,
+					'- executable.type = "code", lang = "js"',
+					"- Write plain JavaScript (no TypeScript annotations)",
+					"- Export a function named `proposedSolution` that returns the answer",
+					"- The function must be self-contained (no imports, no require)",
+				].join("\n");
+			}
 			return "- Executable type must match the verification oracle for the current step.";
 	}
 }

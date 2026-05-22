@@ -1,5 +1,5 @@
 export type EventKind =
-  | "llm:start" | "llm:end"
+  | "llm:start" | "llm:end" | "llm:thinking"
   | "agent:run"
   | "verdict"
   | "artifact:born" | "artifact:killed" | "artifact:survived"
@@ -24,6 +24,11 @@ let _seq = 0;
 const _subs = new Set<(e: UIEvent) => void>();
 export const history: UIEvent[] = [];
 const MAX_HISTORY = 1000;
+
+export let runParamsState: Record<string, unknown> | null = null;
+export function setRunParamsState(p: Record<string, unknown>): void {
+  runParamsState = p;
+}
 
 export function emit(
   kind: EventKind,

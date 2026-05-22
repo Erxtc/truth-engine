@@ -1,6 +1,6 @@
 import type { WorkingContext, Proposal } from "../core/types";
 import * as v from "valibot";
-import { queryLlm } from "../llm/perplexity";
+import { queryReasoning } from "../llm";
 
 const formalizerOutputSchema = v.object({
 	success: v.boolean(),
@@ -37,7 +37,7 @@ If you cannot produce a correct formalization, set success=false and explain why
 `.trim();
 
 	try {
-		const result = await queryLlm(prompt, formalizerOutputSchema);
+		const result = await queryReasoning({ userPrompt: prompt, schema: formalizerOutputSchema });
 		if (!result.response.success || !result.response.formalCode) {
 			console.log(`[formalizer] failed: ${result.response.error}`);
 			return null;

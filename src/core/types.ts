@@ -1,4 +1,53 @@
-export type Domain = "sorting" | "compression" | "math" | "ml" | "physics" | "project";
+/**
+ * How certain we are that an artifact is correct.
+ * 0 = proposed, 1 = survived critique, 2 = execution verified,
+ * 3 = peer-consensus (multi-chain), 4 = formally proven
+ */
+export type ConfidenceLevel = 0 | 1 | 2 | 3 | 4;
+
+export type ComplexityType =
+	| "trivial"        // 1–2: single obvious approach
+	| "algorithmic"    // 3–4: standard technique, minor implementation effort
+	| "optimization"   // 5–6: multiple approaches, tradeoffs
+	| "systems"        // 6–7: architecture + multi-component implementation
+	| "research"       // 8–9: novel approach, no direct known solution
+	| "formal_proof";  // 9–10: requires formal verification
+
+/** Concrete run parameters derived from complexity assessment + CLI overrides */
+export interface RunParams {
+	maxDepth: number;
+	maxBranches: number;
+	criticCount: number;
+	requiredConfidence: ConfidenceLevel;
+	consensus: boolean;
+	/** Soft cap on total LLM calls for this run; supervisor enforces it */
+	budgetLlmCalls: number;
+}
+
+export interface ComplexityAssessment {
+	/** 1–10 difficulty score */
+	score: number;
+	type: ComplexityType;
+	/** One or two sentences explaining the rating */
+	reasoning: string;
+	/** How many independent sub-problems this breaks into (1 = atomic) */
+	numSubproblems: number;
+	/** Brief description of each sub-problem when numSubproblems > 1 */
+	decompositionHint: string[];
+	/** Derived run parameters — set by code, not LLM */
+	suggestedParams: RunParams;
+}
+
+export type Domain =
+	| "sorting"
+	| "compression"
+	| "math"
+	| "ml"
+	| "physics"
+	| "project"
+	| "typescript"
+	| "python"
+	| "c";
 
 export type OracleHint =
 	| "unit_tests"
@@ -24,16 +73,19 @@ export interface StepPlan {
 }
 
 export type ExecutablePayload =
-	| { type: "code"; lang: "js" | "ts" | "python"; source: string }
+	| { type: "code"; lang: "js" | "ts" | "python" | "c"; source: string }
 	| { type: "proof"; system: "lean4" | "coq"; source: string }
 	| { type: "sim"; engine: "qutip" | "custom"; config: Record<string, unknown> }
 	| {
 		type: "project";
-		lang: "js" | "ts" | "python" | "mixed";
+		lang: "js" | "ts" | "python" | "c" | "mixed";
 		files: Record<string, string>;
+		gitRepo?: string;
+		installCommand?: string;
 		buildCommand?: string;
 		testCommand?: string;
 		runCommand?: string;
+		entrypoint?: string;
 	};
 
 export interface Proposal {

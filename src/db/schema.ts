@@ -15,6 +15,7 @@ export const problems = sqliteTable("problems", {
 	status: text("status", { enum: problemStatuses }).default("open").notNull(),
 	stepPlan: text("stepPlan"),
 	currentStep: integer("currentStep").default(0).notNull(),
+	requiredConfidence: integer("requiredConfidence").default(2).notNull(),
 	createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(CURRENT_TIMESTAMP)`),
 	updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().default(sql`(CURRENT_TIMESTAMP)`),
 });
@@ -37,6 +38,7 @@ export const artifacts = sqliteTable("artifacts", {
 	sourceCode: text("sourceCode"),
 	payload: text("payload", { mode: "json" }),
 
+	confidenceLevel: integer("confidenceLevel").default(0).notNull(),
 	latestExecutionId: text("latestExecutionId"),
 	provenance: text("provenance", { mode: "json" }),
 

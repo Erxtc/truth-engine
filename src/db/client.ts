@@ -6,6 +6,7 @@ export const db = new Kysely<DB>({
 	dialect: new BunSqliteDialect("./db.sqlite"),
 });
 
+// We're still under dev, we don't need migrations just update schema.ts and the rest will be handled by drizzle
 
 // TODO: Test updates:
 async function trackUpdates(tableName: string) {

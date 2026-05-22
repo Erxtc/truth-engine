@@ -1,5 +1,6 @@
+import * as v from 'valibot';
 import { queryLlamaCpp, type LlamaModelConfig } from './llama';
-import type { BaseSchema } from 'valibot';
+import { emit } from '../ui/events';
 
 const REASONING_MODEL: LlamaModelConfig = {
     baseUrl: process.env.LLAMA_BASE_URL || 'http://localhost:8080',
@@ -13,31 +14,49 @@ const CRITIC_MODEL: LlamaModelConfig = {
     contextSize: 4096,
 };
 
-export async function queryReasoning<T extends BaseSchema>(options: {
+function promptPreview(p: string, max = 120): string {
+    return p.length <= max ? p : p.slice(0, max) + '…';
+}
+
+export async function queryReasoning<T extends v.GenericSchema>(options: {
     userPrompt: string;
     systemPrompt?: string;
     schema: T;
     temperature?: number;
     maxTokens?: number;
-}): Promise<{ response: T['_output']; usage?: any }> {
-    return queryLlamaCpp({ ...options, modelConfig: REASONING_MODEL });
+}): Promise<{ response: v.InferOutput<T>; usage?: any }> {
+    const t0 = Date.now();
+    emit('llm:start', promptPreview(options.userPrompt), { detail: { model: REASONING_MODEL.modelName, role: 'reasoning', prompt: options.userPrompt } });
+    const result = await queryLlamaCpp({ ...options, modelConfig: REASONING_MODEL });
+    const ms = Date.now() - t0;
+    emit('llm:end', `reasoning done in ${(ms / 1000).toFixed(1)}s`, { ms, detail: { usage: result.usage } });
+    return result;
 }
 
-export async function queryCritic<T extends BaseSchema>(options: {
+export async function queryCritic<T extends v.GenericSchema>(options: {
     userPrompt: string;
     systemPrompt?: string;
     schema: T;
     temperature?: number;
     maxTokens?: number;
-}): Promise<{ response: T['_output']; usage?: any }> {
-    return queryLlamaCpp({ ...options, modelConfig: CRITIC_MODEL });
+}): Promise<{ response: v.InferOutput<T>; usage?: any }> {
+    const t0 = Date.now();
+    emit('llm:start', promptPreview(options.userPrompt), { detail: { model: CRITIC_MODEL.modelName, role: 'critic', prompt: options.userPrompt } });
+    const result = await queryLlamaCpp({ ...options, modelConfig: CRITIC_MODEL });
+    const ms = Date.now() - t0;
+    emit('llm:end', `critic done in ${(ms / 1000).toFixed(1)}s`, { ms, detail: { usage: result.usage } });
+    return result;
 }
 
-export async function queryLlmForRole<T extends BaseSchema>(
-    role: 'reasoning' | 'critic',
-    options: Parameters<typeof queryReasoning<T>>[0]
-) {
-    if (role === 'critic') return queryCritic(options);
-    return queryReasoning(options);
+// queryLlm routes to local model in dev; swap to perplexity for research-enriched runs
+export async function queryLlm<T extends v.GenericSchema>(
+    userPrompt: string,
+    schema: T,
+): Promise<{ response: v.InferOutput<T>; usage?: any }> {
+    const t0 = Date.now();
+    emit('llm:start', promptPreview(userPrompt), { detail: { model: REASONING_MODEL.modelName, role: 'llm', prompt: userPrompt } });
+    const result = await queryLlamaCpp({ userPrompt, schema, modelConfig: REASONING_MODEL });
+    const ms = Date.now() - t0;
+    emit('llm:end', `llm done in ${(ms / 1000).toFixed(1)}s`, { ms, detail: { usage: result.usage } });
+    return result;
 }
-

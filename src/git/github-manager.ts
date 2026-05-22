@@ -1,4 +1,4 @@
-import simpleGit, { SimpleGit } from "simple-git";
+import simpleGit, { type SimpleGit } from "simple-git";
 import { Octokit } from "@octokit/rest";
 import * as fs from "fs/promises";
 import * as path from "path";

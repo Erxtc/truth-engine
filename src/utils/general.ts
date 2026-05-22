@@ -25,8 +25,20 @@ export class ThrottledSemaphore {
 	}
 }
 
-// Generic type 'BaseSchema<TInput$1, TOutput$1, TIssue>' requires 3 type argument(s).
-export function valibotParse<T extends v.BaseSchema>(schema: T, input: unknown): v.InferOutput<T> {
+/**
+ * Strip TypeScript type annotations using Bun's built-in transpiler.
+ * Falls back to the original source if transpilation fails (plain JS passes through unchanged).
+ */
+export function transpileToJs(source: string): string {
+	try {
+		const transpiler = new Bun.Transpiler({ loader: "ts" });
+		return transpiler.transformSync(source);
+	} catch {
+		return source;
+	}
+}
+
+export function valibotParse<T extends v.GenericSchema>(schema: T, input: unknown): v.InferOutput<T> {
 	const result = v.safeParse(schema, input);
 	if (result.success) return result.output;
 	throw new Error(`Valibot parse error: ${JSON.stringify(result.issues)}`);

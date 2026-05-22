@@ -1,4 +1,4 @@
-import { queryLlm } from "../../llm";
+import { queryReasoning } from "../../llm";
 import { execSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
@@ -36,8 +36,8 @@ If you cannot find a failure after thinking, return { "inputArray": null }.
 
 		let inputArray: number[] | null = null;
 		try {
-			const result = await queryLlm(prompt, attackSchema);
-			inputArray = result.inputArray;
+			const result = await queryReasoning({ userPrompt: prompt, schema: attackSchema });
+			inputArray = result.response.inputArray;
 		} catch (e) {
 			// LLM failed – we can't guarantee it's safe, so skip adversarial
 			return { stageName: this.name, passed: true, reason: "Adversarial LLM error, skipping", runtimeMs: Date.now() - start };

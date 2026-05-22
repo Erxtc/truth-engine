@@ -8,7 +8,7 @@ import { ContextBuilder } from "./core/context-builder";
 import { WorkspaceManager } from "./workspace/manager";
 import { runFeedbackAnalyzer, runLegislator } from "./analysis/feedback-manager";
 import { db } from "./db/client";
-import type { Proposal, Critique } from "./core/types";
+import type { Proposal, Critique, WorkingContext } from "./core/types";
 import type { Artifact } from "./db/schema";
 import { emit } from "./ui/events";
 import { startUiServer } from "./ui/server";
@@ -20,7 +20,6 @@ const cfg = loadConfig();
 const DOMAIN = cfg.domain;
 const ROOT_PROBLEM_DESC = cfg.problem;
 const SCORE_THRESHOLD = cfg.scoreThreshold;
-const MAX_REPAIR_DEPTH = 1;
 const LEGISLATOR_EVERY_N_DEATHS = 5;
 
 // These are set in main() after the complexity estimator runs.
@@ -28,6 +27,13 @@ const LEGISLATOR_EVERY_N_DEATHS = 5;
 let MAX_DEPTH    = 4;
 let MAX_BRANCHES = 2;
 let CRITIC_COUNT = 2;
+
+// LLM call budget — set from runParams in main(); evolve() stops escalating when exhausted.
+let llmCallsUsed   = 0;
+let budgetLlmCalls = 200;
+
+function trackLlmCalls(n: number): void { llmCallsUsed += n; }
+function budgetExhausted(): boolean     { return llmCallsUsed >= budgetLlmCalls; }
 
 let deathCount = 0;
 async function recordDeath(problemId: string) {
@@ -152,11 +158,12 @@ async function main() {
 		depth: 0,
 	});
 
-	await evolve(root, 0, 0);
+	const solvedViaEvolution = await evolve(root, 0);
 
 	// ── Consensus phase ──────────────────────────────────────────────────────
 	// Driven by resolved runParams (complexity estimator + CLI overrides).
-	const runConsensusPhase = runParams.consensus;
+	// Skip consensus if evolution already reached required confidence
+	const runConsensusPhase = runParams.consensus && !solvedViaEvolution;
 
 	if (runConsensusPhase) {
 		console.log("\n[truth-engine] Entering consensus phase…");
@@ -210,255 +217,297 @@ async function main() {
 	process.exit(0);
 }
 
-// ── Recursive evolution ──────────────────────────────────────────────────────
-async function evolve(
+// ── Per-proposal pipeline ─────────────────────────────────────────────────────
+// Returns the surviving artifact (or null if killed) and whether the problem is
+// solved at the required confidence level.
+async function tryProposal(
+	proposal: Proposal,
 	parent: Artifact,
-	depth: number,
-	repairDepth: number = 0
-): Promise<void> {
-	if (depth >= MAX_DEPTH) {
-		console.log(`[depth ${depth}] max depth reached on ${parent.id}`);
-		return;
+	context: WorkingContext,
+	numCritics: number,
+): Promise<{ artifact: Artifact | null; solved: boolean }> {
+	const nil = { artifact: null, solved: false };
+	const requiredConfidence = domainSpec?.requiredConfidence ?? 2;
+
+	// Create child artifact
+	emit("artifact:born", proposal.hypothesis.slice(0, 80));
+	const child = await kg.createArtifact({
+		type: proposal.executable.type === "project" ? "project" : "hypothesis",
+		problemId: parent.problemId,
+		parentId: parent.id,
+		depth: parent.depth + 1,
+		hypothesisText: proposal.hypothesis,
+		sourceCode: proposal.executable.type === "code" ? proposal.executable.source : undefined,
+		payload: proposal,
+		provenance: { agent: "proposer", model: process.env.OLLAMA_MODEL },
+	});
+
+	// Handle project files
+	if (proposal.executable.type === "project" && "files" in proposal.executable) {
+		const { gitBranch, gitCommit } = await workspace.createArtifactDir(
+			child, proposal.executable.files, proposal.hypothesis
+		);
+		child.payload = { ...proposal, files: proposal.executable.files, gitBranch, gitCommit };
+		await kg.updateArtifact(child.id, { payload: child.payload });
 	}
 
-	const context = await contextBuilder.build(parent);
+	// Critics (parallel)
+	console.log(`  [${child.id.slice(0, 8)}] ${numCritics} critic(s)…`);
+	emit("agent:run", `${numCritics} critics`, { artifactId: child.id });
+	let critiqueArrays: Critique[][];
+	try {
+		trackLlmCalls(numCritics);
+		critiqueArrays = await Promise.all(
+			Array.from({ length: numCritics }, () => runCritic(context, proposal))
+		);
+	} catch (err) {
+		console.error(`Critics failed for ${child.id}:`, err);
+		await workspace.removeArtifactDir(child, "Critic agent error");
+		await kg.killArtifact(child.id, "Critic agent error");
+		await recordDeath(parent.problemId);
+		return nil;
+	}
 
-	// 1. Propose
-	console.log(`\n[depth ${depth}] Proposing from ${parent.id}…`);
-	emit("agent:run", `proposer @ depth ${depth}`, { artifactId: parent.id });
+	const allCritiques = critiqueArrays.flat();
+	for (const critique of allCritiques) {
+		const critNode = await kg.createArtifact({
+			type: "failure_report",
+			problemId: parent.problemId,
+			title: critique.description,
+			payload: critique,
+			provenance: { agent: "critic" },
+		});
+		await kg.addRelation(child.id, critNode.id, "contradicts", { severity: critique.severity });
+	}
+
+	// Judge
+	console.log(`  [${child.id.slice(0, 8)}] Judging…`);
+	emit("agent:run", `judge`, { artifactId: child.id });
+	let verdict;
+	try {
+		trackLlmCalls(1);
+		verdict = await runJudge(context, proposal, allCritiques);
+	} catch (err) {
+		console.error(`Judge failed for ${child.id}:`, err);
+		await workspace.removeArtifactDir(child, "Judge agent error");
+		await kg.killArtifact(child.id, "Judge agent error");
+		trackLlmCalls(1); await runFeedbackAnalyzer(kg, child.id);
+		await recordDeath(parent.problemId);
+		return nil;
+	}
+
+	emit("verdict", `score=${verdict.score} decision=${verdict.decision}`, { artifactId: child.id, detail: verdict });
+
+	if (verdict.decision === "kill" || verdict.score < SCORE_THRESHOLD) {
+		const killReason = `judge: ${verdict.reason} (score ${verdict.score})`;
+		await workspace.removeArtifactDir(child, killReason);
+		await kg.killArtifact(child.id, killReason);
+		emit("artifact:killed", `${child.id.slice(0, 8)} — ${verdict.reason.slice(0, 60)}`, { artifactId: child.id });
+		console.log(`  [${child.id.slice(0, 8)}] ✗ killed by judge (score=${verdict.score})`);
+		trackLlmCalls(1); await runFeedbackAnalyzer(kg, child.id);
+		await recordDeath(parent.problemId);
+		return nil;
+	}
+
+	// Confidence gate 1: survived adversarial critique
+	await kg.setConfidenceLevel(child.id, 1);
+
+	// Formalize routing
+	if (verdict.decision === "formalize") {
+		console.log(`  [${child.id.slice(0, 8)}] Formalizing…`);
+		trackLlmCalls(1);
+		const formalProposal = await runFormalizer(context, proposal);
+		if (!formalProposal) {
+			await workspace.removeArtifactDir(child, "Formalization failed");
+			await kg.killArtifact(child.id, "Formalization failed");
+			await recordDeath(parent.problemId);
+			return nil;
+		}
+		await kg.updateArtifact(child.id, {
+			formalStatement: formalProposal.executable.type === "proof" ? formalProposal.executable.source : undefined,
+			sourceCode: undefined,
+		});
+		proposal = formalProposal;
+	}
+
+	// Execute (reality gate)
+	console.log(`  [${child.id.slice(0, 8)}] Executing…`);
+	let outcome: ExecutionOutcome;
+	try {
+		outcome = await runExecutor(DOMAIN, proposal, context, child);
+	} catch (err) {
+		outcome = {
+			executionResult: { passed: false, reason: `Executor threw: ${err}`, iterations: 0 },
+			pipelineResult: {
+				overallPassed: false,
+				stages: [{ stageName: "FatalError", passed: false, reason: String(err), runtimeMs: 0 }],
+				finalMetrics: {},
+			},
+		};
+	}
+
+	await kg.recordPipelineExecution(child.id, outcome.pipelineResult);
+	const { executionResult } = outcome;
+
+	if (!executionResult.passed) {
+		emit("artifact:killed", `${child.id.slice(0, 8)} — execution: ${executionResult.reason.slice(0, 60)}`, { artifactId: child.id });
+
+		// Attempt repair
+		console.log(`  [${child.id.slice(0, 8)}] Attempting repair…`);
+		emit("repair:start", `repairing: ${executionResult.reason.slice(0, 60)}`, { artifactId: child.id });
+		trackLlmCalls(1);
+		const repairedProposal = await runRepair(context, proposal, executionResult);
+		if (repairedProposal) {
+			const repairedChild = await kg.createArtifact({
+				type: "hypothesis",
+				problemId: parent.problemId,
+				parentId: parent.id,
+				depth: parent.depth + 1,
+				hypothesisText: repairedProposal.hypothesis,
+				sourceCode: repairedProposal.executable.type === "code" ? repairedProposal.executable.source : undefined,
+				payload: repairedProposal,
+				provenance: { agent: "repair" },
+			});
+
+			const repairOutcome = await runExecutor(DOMAIN, repairedProposal, context, repairedChild);
+			await kg.recordExecution(repairedChild.id, {
+				executionType: "code_run",
+				passed: repairOutcome.executionResult.passed,
+				metrics: repairOutcome.executionResult.metrics ?? {},
+				errorLog: repairOutcome.executionResult.passed ? null : repairOutcome.executionResult.reason,
+				testResults: [],
+				runtimeMs: null,
+			});
+
+			if (repairOutcome.executionResult.passed) {
+				await kg.setConfidenceLevel(repairedChild.id, 2);
+				const finalScore = computeScore(verdict.score, repairOutcome.executionResult.iterations, repairedChild.depth);
+				await kg.updateArtifact(repairedChild.id, { score: finalScore, status: "lemma" });
+				await workspace.promoteToShared(repairedChild);
+				emit("repair:done", `repair survived, score=${finalScore}`, { artifactId: repairedChild.id });
+				emit("artifact:survived", `${repairedChild.id.slice(0, 8)} score=${finalScore} (repaired)`, { artifactId: repairedChild.id });
+				console.log(`  [${repairedChild.id.slice(0, 8)}] ✓ repair survived [confidence=2/${requiredConfidence}], score=${finalScore}`);
+				if (verdict.advances_step) {
+					await kg.advanceStep(parent.problemId);
+					emit("step:advanced", verdict.step_assessment ?? "step complete", { artifactId: repairedChild.id });
+				}
+				const solved = requiredConfidence <= 2;
+				if (solved) {
+					emit("problem:solved", `confidence=2 score=${finalScore} (repaired)`, { artifactId: repairedChild.id, detail: { hypothesis: repairedProposal.hypothesis } });
+					console.log(`  [${repairedChild.id.slice(0, 8)}] ✓ SOLVED via repair (${confidenceLabel(2)})`);
+				}
+				return { artifact: repairedChild, solved };
+			}
+
+			await workspace.removeArtifactDir(repairedChild, repairOutcome.executionResult.reason);
+			await kg.killArtifact(repairedChild.id, repairOutcome.executionResult.reason);
+			emit("repair:done", `repair failed: ${repairOutcome.executionResult.reason.slice(0, 60)}`, { artifactId: repairedChild.id });
+			console.log(`  [${repairedChild.id.slice(0, 8)}] ✗ repair failed`);
+			trackLlmCalls(1); await runFeedbackAnalyzer(kg, repairedChild.id);
+			await recordDeath(parent.problemId);
+		}
+
+		await workspace.removeArtifactDir(child, executionResult.reason);
+		await kg.killArtifact(child.id, executionResult.reason);
+		trackLlmCalls(1); await runFeedbackAnalyzer(kg, child.id);
+		await recordDeath(parent.problemId);
+		console.log(`  [${child.id.slice(0, 8)}] ✗ killed by reality — ${executionResult.reason}`);
+		return nil;
+	}
+
+	// Survived execution
+	await kg.setConfidenceLevel(child.id, 2);
+	const finalScore = computeScore(verdict.score, executionResult.iterations, child.depth);
+	await kg.updateArtifact(child.id, { score: finalScore, status: "lemma" });
+	await workspace.promoteToShared(child);
+	emit("artifact:survived", `${child.id.slice(0, 8)} score=${finalScore} depth=${child.depth}`, { artifactId: child.id, detail: { score: finalScore, hypothesis: proposal.hypothesis.slice(0, 100) } });
+	console.log(`  [${child.id.slice(0, 8)}] ✓ survived [confidence=2/${requiredConfidence}], score=${finalScore}`);
+
+	if (verdict.advances_step) {
+		console.log(`  [${child.id.slice(0, 8)}] ✓ step advanced — ${verdict.step_assessment ?? ""}`);
+		emit("step:advanced", verdict.step_assessment ?? "step complete", { artifactId: child.id });
+		await kg.advanceStep(parent.problemId);
+	}
+
+	const solved = requiredConfidence <= 2;
+	if (solved) {
+		console.log(`  [${child.id.slice(0, 8)}] ✓ SOLVED (${confidenceLabel(2)}, score=${finalScore})`);
+		emit("problem:solved", `confidence=2 score=${finalScore}`, { artifactId: child.id, detail: { hypothesis: proposal.hypothesis } });
+	}
+	return { artifact: child, solved };
+}
+
+// ── Adaptive evolution ────────────────────────────────────────────────────────
+// Phase 1 (direct): 1 proposal, 1 critic — cheapest possible attempt.
+// Phase 2 (escalate): remaining branches with full critics — only if direct fails
+//   and budget allows. Context is rebuilt so failures from phase 1 inform phase 2.
+// Recurses on survivors (best-first) until solved or depth/budget limit hit.
+// Returns true as soon as required confidence is reached — callers short-circuit.
+async function evolve(parent: Artifact, depth: number): Promise<boolean> {
+	if (depth >= MAX_DEPTH) {
+		console.log(`[depth ${depth}] max depth reached`);
+		return false;
+	}
+	if (budgetExhausted()) {
+		console.log(`[depth ${depth}] LLM budget exhausted (${llmCallsUsed}/${budgetLlmCalls} calls)`);
+		return false;
+	}
+
+	// Direct phase: only on the very first call (depth 0, no calls used yet)
+	const isDirect = depth === 0 && llmCallsUsed === 0;
+	const branchCount = isDirect ? 1 : MAX_BRANCHES;
+	const numCritics  = isDirect ? 1 : CRITIC_COUNT;
+
+	console.log(`\n[depth ${depth}] ${isDirect ? "Direct attempt" : `Exploring ${branchCount} branch(es)`} from ${parent.id.slice(0, 8)}…`);
+	emit("agent:run", `proposer @ depth ${depth}${isDirect ? " (direct)" : ""}`, { artifactId: parent.id });
+
 	let proposals: Proposal[];
 	try {
-		proposals = await runProposer(context, MAX_BRANCHES);
+		trackLlmCalls(branchCount);
+		proposals = await runProposer(await contextBuilder.build(parent), branchCount);
 	} catch (err) {
 		console.error("Proposer failed:", err);
-		return;
+		return false;
 	}
 
 	const survivors: Artifact[] = [];
 
-	for (let proposal of proposals) {
-		// Create child artifact
-		emit("artifact:born", proposal.hypothesis.slice(0, 80));
-		const child = await kg.createArtifact({
-			type: proposal.executable.type === "project" ? "project" : "hypothesis",
-			problemId: parent.problemId,
-			parentId: parent.id,
-			depth: parent.depth + 1,
-			hypothesisText: proposal.hypothesis,
-			sourceCode: proposal.executable.type === "code" ? proposal.executable.source : undefined,
-			payload: proposal,
-			provenance: { agent: "proposer", model: process.env.OLLAMA_MODEL },
-		});
+	for (const proposal of proposals) {
+		const { artifact, solved } = await tryProposal(proposal, parent, await contextBuilder.build(parent), numCritics);
+		if (artifact) survivors.push(artifact);
+		if (solved) return true;
+	}
 
-		// Handle project files (write to workspace/Git)
-		if (proposal.executable.type === "project" && "files" in proposal.executable) {
-			const { gitBranch, gitCommit } = await workspace.createArtifactDir(
-				child,
-				proposal.executable.files,
-				proposal.hypothesis
-			);
-			// Update the child's payload with git info
-			child.payload = { ...proposal, files: proposal.executable.files, gitBranch, gitCommit };
-			await kg.updateArtifact(child.id, {
-				payload: child.payload,
-			});
-		}
+	// Escalate: direct failed → try remaining branches with full critics
+	if (isDirect && survivors.length === 0 && !budgetExhausted() && MAX_BRANCHES > 1) {
+		const extra = Math.min(MAX_BRANCHES - 1, budgetLlmCalls - llmCallsUsed);
+		console.log(`\n[depth 0] Direct failed — escalating (${extra} more branch(es))…`);
+		emit("info", `direct attempt failed; escalating to ${extra} more branches`);
 
-		// 2. Critics (parallel)
-		console.log(`  [${child.id}] Running ${CRITIC_COUNT} critics…`);
-		emit("agent:run", `${CRITIC_COUNT} critics on ${child.id.slice(0, 8)}`, { artifactId: child.id });
-		let critiqueArrays: Critique[][];
+		let moreProposals: Proposal[];
 		try {
-			critiqueArrays = await Promise.all(
-				Array.from({ length: CRITIC_COUNT }, () => runCritic(context, proposal))
-			);
+			trackLlmCalls(extra);
+			// Rebuild context so the direct-phase failure is visible to the proposer
+			moreProposals = await runProposer(await contextBuilder.build(parent), extra);
 		} catch (err) {
-			console.error(`Critics failed for ${child.id}:`, err);
-			await workspace.removeArtifactDir(child, "Critic agent error");
-			await kg.killArtifact(child.id, "Critic agent error");
-			await recordDeath(parent.problemId);
-			continue;
+			console.error("Proposer (escalation) failed:", err);
+			moreProposals = [];
 		}
 
-		const allCritiques = critiqueArrays.flat();
-		for (const critique of allCritiques) {
-			const critNode = await kg.createArtifact({
-				type: "failure_report",
-				problemId: parent.problemId,
-				title: critique.description,
-				payload: critique,
-				provenance: { agent: "critic" },
-			});
-			await kg.addRelation(child.id, critNode.id, "contradicts", {
-				severity: critique.severity,
-			});
-		}
-
-		// 3. Judge
-		console.log(`  [${child.id}] Judging…`);
-		emit("agent:run", `judge on ${child.id.slice(0, 8)}`, { artifactId: child.id });
-		let verdict;
-		try {
-			verdict = await runJudge(context, proposal, allCritiques);
-		} catch (err) {
-			console.error(`Judge failed for ${child.id}:`, err);
-			await workspace.removeArtifactDir(child, "Judge agent error");
-			await kg.killArtifact(child.id, "Judge agent error");
-			await runFeedbackAnalyzer(kg, child.id);
-			await recordDeath(parent.problemId);
-			continue;
-		}
-
-		emit("verdict", `score=${verdict.score} decision=${verdict.decision}`, { artifactId: child.id, detail: verdict });
-
-		if (verdict.decision === "kill" || verdict.score < SCORE_THRESHOLD) {
-			const killReason = `judge: ${verdict.reason} (score ${verdict.score})`;
-			await workspace.removeArtifactDir(child, killReason);
-			await kg.killArtifact(child.id, killReason);
-			emit("artifact:killed", `${child.id.slice(0, 8)} — ${verdict.reason.slice(0, 60)}`, { artifactId: child.id });
-			console.log(`  [${child.id}] ✗ killed by judge (score=${verdict.score})`);
-			await runFeedbackAnalyzer(kg, child.id);
-			await recordDeath(parent.problemId);
-			continue;
-		}
-
-		// Confidence gate 1: survived adversarial critique
-		await kg.setConfidenceLevel(child.id, 1);
-
-		// 4. Handle formalize routing
-		if (verdict.decision === "formalize") {
-			console.log(`  [${child.id}] Routing to formalizer…`);
-			const formalProposal = await runFormalizer(context, proposal);
-			if (!formalProposal) {
-				await workspace.removeArtifactDir(child, "Formalization failed");
-				await kg.killArtifact(child.id, "Formalization failed");
-				console.log(`  [${child.id}] ✗ formalization failed`);
-				await runFeedbackAnalyzer(kg, child.id);
-				await recordDeath(parent.problemId);
-				continue;
-			}
-			await kg.updateArtifact(child.id, {
-				formalStatement:
-					formalProposal.executable.type === "proof" ? formalProposal.executable.source : undefined,
-				sourceCode: undefined,
-			});
-			proposal = formalProposal;
-		}
-
-		// 5. Execute (reality gate)
-		console.log(`  [${child.id}] Executing…`);
-		let outcome: ExecutionOutcome;
-		try {
-			outcome = await runExecutor(DOMAIN, proposal, context, child);
-		} catch (err) {
-			outcome = {
-				executionResult: {
-					passed: false,
-					reason: `Executor threw: ${err}`,
-					iterations: 0,
-				},
-				pipelineResult: {
-					overallPassed: false,
-					stages: [{ stageName: "FatalError", passed: false, reason: String(err), runtimeMs: 0 }],
-					finalMetrics: {},
-				},
-			};
-		}
-
-		await kg.recordPipelineExecution(child.id, outcome.pipelineResult);
-		const { executionResult } = outcome;
-
-		if (!executionResult.passed) {
-			emit("artifact:killed", `${child.id.slice(0, 8)} — execution: ${executionResult.reason.slice(0, 60)}`, { artifactId: child.id });
-			// Attempt repair if allowed
-			if (repairDepth < MAX_REPAIR_DEPTH) {
-				console.log(`  [${child.id}] Attempting repair (depth ${repairDepth})…`);
-				emit("repair:start", `repairing ${child.id.slice(0, 8)}: ${executionResult.reason.slice(0, 60)}`, { artifactId: child.id });
-				const repairedProposal = await runRepair(context, proposal, executionResult);
-				if (repairedProposal) {
-					const repairedChild = await kg.createArtifact({
-						type: "hypothesis",
-						problemId: parent.problemId,
-						parentId: parent.id,
-						depth: parent.depth + 1,
-						hypothesisText: repairedProposal.hypothesis,
-						sourceCode:
-							repairedProposal.executable.type === "code" ? repairedProposal.executable.source : undefined,
-						payload: repairedProposal,
-						provenance: { agent: "repair" },
-					});
-
-					const repairOutcome = await runExecutor(DOMAIN, repairedProposal, context, repairedChild);
-					await kg.recordExecution(repairedChild.id, {
-						executionType: "code_run",
-						passed: repairOutcome.executionResult.passed,
-						metrics: repairOutcome.executionResult.metrics ?? {},
-						errorLog: repairOutcome.executionResult.passed ? null : repairOutcome.executionResult.reason,
-						testResults: [],
-						runtimeMs: null,
-					});
-
-					if (repairOutcome.executionResult.passed) {
-						// Confidence gate 2: repaired artifact passed execution
-						await kg.setConfidenceLevel(repairedChild.id, 2);
-						const finalScore = computeScore(
-							verdict.score,
-							repairOutcome.executionResult.iterations,
-							repairedChild.depth
-						);
-						await kg.updateArtifact(repairedChild.id, { score: finalScore, status: "lemma" });
-						await workspace.promoteToShared(repairedChild);
-						survivors.push(repairedChild);
-						emit("repair:done", `repair survived, score=${finalScore}`, { artifactId: repairedChild.id });
-						emit("artifact:survived", `${repairedChild.id.slice(0, 8)} score=${finalScore} (repaired)`, { artifactId: repairedChild.id });
-						console.log(`  [${repairedChild.id}] ✓ repair survived [confidence=2/${domainSpec?.requiredConfidence}], score=${finalScore}`);
-					} else {
-						await workspace.removeArtifactDir(repairedChild, repairOutcome.executionResult.reason);
-						await kg.killArtifact(repairedChild.id, repairOutcome.executionResult.reason);
-						emit("repair:done", `repair failed: ${repairOutcome.executionResult.reason.slice(0, 60)}`, { artifactId: repairedChild.id });
-						console.log(`  [${repairedChild.id}] ✗ repair failed`);
-						await runFeedbackAnalyzer(kg, repairedChild.id);
-						await recordDeath(parent.problemId);
-					}
-				}
-			}
-
-			await workspace.removeArtifactDir(child, executionResult.reason);
-			await kg.killArtifact(child.id, executionResult.reason);
-			await runFeedbackAnalyzer(kg, child.id);
-			await recordDeath(parent.problemId);
-			console.log(`  [${child.id}] ✗ killed by reality — ${executionResult.reason}`);
-			continue;
-		}
-
-		// 6. Survival – promote
-		// Confidence gate 2: passed automated execution
-		await kg.setConfidenceLevel(child.id, 2);
-
-		const finalScore = computeScore(verdict.score, executionResult.iterations, child.depth);
-		await kg.updateArtifact(child.id, { score: finalScore, status: "lemma" });
-		await workspace.promoteToShared(child);
-		survivors.push(child);
-		emit("artifact:survived", `${child.id.slice(0, 8)} score=${finalScore} depth=${child.depth}`, { artifactId: child.id, detail: { score: finalScore, hypothesis: proposal.hypothesis.slice(0, 100) } });
-		console.log(`  [${child.id}] ✓ survived [confidence=2/${domainSpec?.requiredConfidence}], score=${finalScore}, depth=${child.depth}`);
-
-		if ((domainSpec?.requiredConfidence ?? 2) <= 2) {
-			console.log(`  [${child.id}] ✓ SOLVED — reached required confidence (${confidenceLabel(2)})`);
-			emit("problem:solved", `confidence=2 score=${finalScore}`, { artifactId: child.id, detail: { hypothesis: proposal.hypothesis } });
-		}
-
-		if (verdict.advances_step) {
-			console.log(`  [${child.id}] ✓ step advanced — ${verdict.step_assessment ?? ""}`);
-			emit("step:advanced", verdict.step_assessment ?? "step complete", { artifactId: child.id });
-			await kg.advanceStep(parent.problemId);
+		for (const proposal of moreProposals) {
+			const { artifact, solved } = await tryProposal(proposal, parent, await contextBuilder.build(parent), CRITIC_COUNT);
+			if (artifact) survivors.push(artifact);
+			if (solved) return true;
 		}
 	}
 
-	// 7. Recurse on survivors (best-first)
+	// Recurse best-first; short-circuit as soon as one branch solves the problem
 	survivors.sort((a, b) => b.score - a.score);
 	for (const node of survivors) {
-		await evolve(node, depth + 1, 0);
+		const solved = await evolve(node, depth + 1);
+		if (solved) return true;
 	}
+	return false;
 }
 
 main().catch((err) => {

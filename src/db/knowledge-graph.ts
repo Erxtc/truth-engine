@@ -1,38 +1,29 @@
-import type { Insertable } from "kysely";
-
 import { db } from "./client";
 import { type Artifact, type Relation, type Execution, type Problem, } from "./schema";
-
-import type { DB } from "./types";
 import { randomUUIDv7 } from "bun";
 import type { PipelineResult } from "../verification/types";
+import type { StepPlan } from "../core/types";
 
 export class KnowledgeGraph {
-	async createProblem(domain: string, description: string): Promise<Problem> {
+	async createProblem(domain: string, description: string, requiredConfidence = 2): Promise<Problem> {
 		const id = Bun.randomUUIDv7();
-
-		const problem: Insertable<DB["problems"]> = {
-			id,
-			domain,
-			description,
-			status: "open",
-		};
 
 		const p = await db
 			.insertInto("problems")
-			.values(problem)
+			.values({ id, domain, description, status: "open", currentStep: 0, requiredConfidence } as any)
 			.returningAll()
 			.executeTakeFirstOrThrow();
 
-		return p;
+		return p as unknown as Problem;
 	}
 
 	async getProblem(id: string): Promise<Problem | undefined> {
-		return db
+		const row = await db
 			.selectFrom("problems")
 			.selectAll()
 			.where("id", "=", id)
 			.executeTakeFirst();
+		return row as unknown as Problem | undefined;
 	}
 
 	async createArtifact(input: {
@@ -49,30 +40,33 @@ export class KnowledgeGraph {
 	}): Promise<Artifact> {
 		const id = Bun.randomUUIDv7();
 
-		const row: Insertable<DB["artifacts"]> = {
+		const row = {
 			id,
 			status: "active",
 			score: 0,
 			depth: input.depth ?? 0,
-			parent_id: input.parentId ?? null,
+			parentId: input.parentId ?? null,
 			...input,
+			payload: input.payload != null ? JSON.stringify(input.payload) : null,
+			provenance: input.provenance != null ? JSON.stringify(input.provenance) : null,
 		};
 
 		const artifact = await db
 			.insertInto("artifacts")
-			.values(row)
+			.values(row as any)
 			.returningAll()
 			.executeTakeFirstOrThrow();
 
-		return artifact;
+		return artifact as unknown as Artifact;
 	}
 
 	async getArtifact(id: string): Promise<Artifact | undefined> {
-		return db
+		const row = await db
 			.selectFrom("artifacts")
 			.selectAll()
 			.where("id", "=", id)
 			.executeTakeFirst();
+		return row as unknown as Artifact | undefined;
 	}
 
 	async updateArtifact(
@@ -86,13 +80,22 @@ export class KnowledgeGraph {
 				| "title"
 				| "sourceCode"
 				| "formalStatement"
+				| "payload"
 			>
 		>
 	) {
 		await db
 			.updateTable("artifacts")
-			.set(updates)
+			.set(updates as any)
 			.where("id", "=", id)
+			.execute();
+	}
+
+	async setConfidenceLevel(artifactId: string, level: number): Promise<void> {
+		await db
+			.updateTable("artifacts")
+			.set({ confidenceLevel: level } as any)
+			.where("id", "=", artifactId)
 			.execute();
 	}
 
@@ -127,20 +130,14 @@ export class KnowledgeGraph {
 
 		await db
 			.insertInto("relations")
-			.values({
-				id,
-				sourceId,
-				targetId,
-				relationType: type,
-				properties: props,
-			})
+			.values({ id, sourceId, targetId, relationType: type, properties: props != null ? JSON.stringify(props) : null } as any)
 			.execute();
 	}
 
 	// ── Queries ─────────────────────────────────────────────────────────────
 
 	async getProvenLemmas(problemId: string, limit = 10): Promise<Artifact[]> {
-		return db
+		const rows = await db
 			.selectFrom("artifacts")
 			.selectAll()
 			.where("problemId", "=", problemId)
@@ -149,6 +146,7 @@ export class KnowledgeGraph {
 			.orderBy("score", "desc")
 			.limit(limit)
 			.execute();
+		return rows as unknown as Artifact[];
 	}
 
 	async getFailedApproaches(
@@ -202,7 +200,7 @@ export class KnowledgeGraph {
 
 	async recordExecution(
 		artifactId: string,
-		exec: Omit<Execution, "id" | "createdAt">
+		exec: Omit<Execution, "id" | "createdAt" | "artifactId">
 	) {
 		const id = randomUUIDv7();
 
@@ -212,12 +210,14 @@ export class KnowledgeGraph {
 				id,
 				artifactId,
 				...exec,
-			})
+				metrics: exec.metrics != null ? JSON.stringify(exec.metrics) : null,
+				testResults: exec.testResults != null ? JSON.stringify(exec.testResults) : null,
+			} as any)
 			.execute();
 
 		await db
 			.updateTable("artifacts")
-			.set({ latest_execution_id: id })
+			.set({ latestExecutionId: id } as any)
 			.where("id", "=", artifactId)
 			.execute();
 	}
@@ -235,12 +235,12 @@ export class KnowledgeGraph {
 			.insertInto("agent_logs")
 			.values({
 				id,
-				artifact_id: input.artifactId ?? null,
+				artifactId: input.artifactId ?? null,
 				agentRole: input.agentRole,
 				inputContext: input.inputContext,
 				response: input.response,
 				cost: input.cost,
-			})
+			} as any)
 			.execute();
 	}
 
@@ -248,25 +248,25 @@ export class KnowledgeGraph {
 		artifactId: string,
 		pipelineResult: PipelineResult
 	) {
-		// Record each stage
 		for (const stage of pipelineResult.stages) {
 			await this.recordExecution(artifactId, {
 				executionType: `stage_${stage.stageName}`,
 				passed: stage.passed,
 				metrics: stage.metrics || {},
-				errorLog: stage.reason || undefined,
+				errorLog: stage.reason ?? null,
 				runtimeMs: stage.runtimeMs,
 				testResults: stage.testResults || [],
 			});
 		}
 
-		// Record a summary row
 		await this.recordExecution(artifactId, {
 			executionType: "pipeline_summary",
 			passed: pipelineResult.overallPassed,
 			metrics: pipelineResult.finalMetrics,
+			errorLog: null,
+			testResults: [],
 			runtimeMs: pipelineResult.stages.reduce((sum, s) => sum + s.runtimeMs, 0),
-		}); // Type '{ executionType: string; passed: boolean; metrics: Record<string, number>; runtimeMs: number; }' is missing the following properties from type 'Omit<{ id: string; createdAt: Date; artifactId: string; executionType: string; passed: boolean; metrics: unknown; errorLog: string | null; testResults: unknown; runtimeMs: number | null; }, "id" | "createdAt">': artifactId, errorLog, testResultsts
+		});
 	}
 
 	// Create an insight linked to the problem
@@ -293,26 +293,29 @@ export class KnowledgeGraph {
 
 	// Get recent insights for a problem (ordered by recency)
 	async getRecentInsights(problemId: string, limit = 5): Promise<Artifact[]> {
-		return db
-			.selectFrom('artifacts')
+		const rows = await db
+			.selectFrom("artifacts")
 			.selectAll()
-			.where('problem_id', '=', problemId)
-			.where('type', '=', "insight")
-			.where('status', '=', "active")
-			.orderBy('created_at', 'desc')
-			.limit(limit).execute();
+			.where("problemId", "=", problemId)
+			.where("type", "=", "insight")
+			.where("status", "=", "active")
+			.orderBy("createdAt", "desc")
+			.limit(limit)
+			.execute();
+		return rows as unknown as Artifact[];
 	}
 
 	// Get all active constraints for a problem
 	async getActiveConstraints(problemId: string): Promise<Artifact[]> {
-		return db
+		const rows = await db
 			.selectFrom("artifacts")
 			.selectAll()
-			.where("problem_id", "=", problemId)
+			.where("problemId", "=", problemId)
 			.where("type", "=", "constraint")
 			.where("status", "=", "active")
 			.orderBy("score", "desc")
 			.execute();
+		return rows as unknown as Artifact[];
 	}
 
 	// Promote an insight or failure pattern into a constraint proposal
@@ -323,8 +326,7 @@ export class KnowledgeGraph {
 		derivedFromInsightIds: string[];
 	}): Promise<Artifact> {
 		const artifact = await this.createArtifact({
-			type: "constraint",          // starts as active constraint if we want
-			status: "active",            // or "proposed" – we can use "active" for simplicity
+			type: "constraint",
 			problemId: input.problemId,
 			title: input.title,
 			hypothesisText: input.description,
@@ -366,6 +368,81 @@ export class KnowledgeGraph {
 		}
 
 		return artifact;
+	}
+
+	// ── Step Plan ───────────────────────────────────────────────────────────
+
+	async setStepPlan(problemId: string, plan: StepPlan): Promise<void> {
+		await db
+			.updateTable("problems")
+			.set({ stepPlan: JSON.stringify(plan), currentStep: 0 } as any)
+			.where("id", "=", problemId)
+			.execute();
+	}
+
+	async getStepInfo(problemId: string): Promise<{ plan: StepPlan; currentStep: number } | null> {
+		const problem = await this.getProblem(problemId);
+		if (!problem?.stepPlan) return null;
+		const plan: StepPlan = typeof problem.stepPlan === "string"
+			? JSON.parse(problem.stepPlan)
+			: problem.stepPlan as unknown as StepPlan;
+		return { plan, currentStep: (problem as any).currentStep ?? 0 };
+	}
+
+	async advanceStep(problemId: string): Promise<void> {
+		const info = await this.getStepInfo(problemId);
+		if (!info) return;
+		const next = info.currentStep + 1;
+		if (next >= info.plan.steps.length) {
+			await db.updateTable("problems").set({ status: "solved" } as any).where("id", "=", problemId).execute();
+			console.log(`[KG] Problem ${problemId} solved — all steps complete`);
+			return;
+		}
+		await db.updateTable("problems").set({ currentStep: next } as any).where("id", "=", problemId).execute();
+		console.log(`[KG] Step advanced → ${next}: ${info.plan.steps[next]?.goal}`);
+	}
+
+	/** Get the highest-scoring surviving artifact for a problem */
+	async getBestSurvivor(problemId: string): Promise<Artifact | undefined> {
+		const row = await db
+			.selectFrom("artifacts")
+			.selectAll()
+			.where("problemId", "=", problemId)
+			.where("status", "=", "lemma")
+			.where("confidenceLevel", ">=", 2 as any)
+			.orderBy("score", "desc")
+			.limit(1)
+			.executeTakeFirst();
+		return row as unknown as Artifact | undefined;
+	}
+
+	/** Get all surviving artifacts at or above a given confidence level */
+	async getSurvivors(problemId: string, minConfidence = 2): Promise<Artifact[]> {
+		const rows = await db
+			.selectFrom("artifacts")
+			.selectAll()
+			.where("problemId", "=", problemId)
+			.where("status", "=", "lemma")
+			.where("confidenceLevel", ">=", minConfidence as any)
+			.orderBy("score", "desc")
+			.execute();
+		return rows as unknown as Artifact[];
+	}
+
+	/** Get the most recent N hypothesis/project attempts (both alive and dead) for health tracking */
+	async getRecentAttempts(
+		problemId: string,
+		limit = 8
+	): Promise<Array<{ id: string; score: number; status: string; hypothesisText: string | null }>> {
+		const rows = await db
+			.selectFrom("artifacts")
+			.select(["id", "score", "status", "hypothesisText"])
+			.where("problemId", "=", problemId)
+			.where("type", "in", ["hypothesis", "project"])
+			.orderBy("createdAt", "desc")
+			.limit(limit)
+			.execute();
+		return rows as unknown as Array<{ id: string; score: number; status: string; hypothesisText: string | null }>;
 	}
 
 }

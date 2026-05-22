@@ -75,8 +75,8 @@ export class WorkspaceManager {
 
 	/** Clean up dead artifact */
 	async removeArtifactDir(artifact: Artifact, reason: string = ""): Promise<void> {
-		if (this.git && artifact.payload?.gitBranch) {
-			await this.git.closeBranch(artifact.problemId, artifact.payload.gitBranch, reason);
+		if (this.git && (artifact.payload as any)?.gitBranch) {
+			await this.git.closeBranch(artifact.problemId, (artifact.payload as any).gitBranch, reason);
 		} else {
 			const problemDir = await this.ensureProblemDir(artifact.problemId);
 			const artifactPath = path.join(problemDir, "artifacts", artifact.id);
@@ -88,8 +88,8 @@ export class WorkspaceManager {
 
 	/** Promote verified artifact to shared/main */
 	async promoteToShared(artifact: Artifact): Promise<void> {
-		if (this.git && artifact.payload?.gitBranch) {
-			await this.git.mergeToMain(artifact.problemId, artifact.payload.gitBranch);
+		if (this.git && (artifact.payload as any)?.gitBranch) {
+			await this.git.mergeToMain(artifact.problemId, (artifact.payload as any).gitBranch);
 		} else {
 			// Local: copy files to shared/
 			const artifactPath = await this.getArtifactPath(artifact);

@@ -134,9 +134,9 @@ const perplexityResponseSchema = v.object({
 	user: v.optional(v.nullable(v.string())),
 });
 
-if (!import.meta.env.PERPLEXITY_API_KEY) {
-	throw new Error('Environment variable \'PERPLEXITY_API_KEY\' is missing');
-}
+// if (!import.meta.env.PERPLEXITY_API_KEY) {
+// 	throw new Error('Environment variable \'PERPLEXITY_API_KEY\' is missing');
+// }
 
 interface QueryLlmResponse<T> {
 	response: T;

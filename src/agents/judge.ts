@@ -3,62 +3,93 @@ import { queryReasoning } from "../llm";
 import type { WorkingContext, Proposal, Critique, Verdict } from "../core/types";
 
 const verdictSchema = v.object({
-  decision: v.union([
-    v.literal("execute"),
-    v.literal("formalize"),
-    v.literal("kill"),
-  ]),
-  score: v.pipe(v.number(), v.minValue(0), v.maxValue(100)),
-  reason: v.string(),
-  repairs: v.optional(v.array(v.string())),
+	decision: v.union([
+		v.literal("execute"),
+		v.literal("formalize"),
+		v.literal("kill"),
+	]),
+	score: v.pipe(v.number(), v.minValue(0), v.maxValue(100)),
+	reason: v.string(),
+	repairs: v.optional(v.array(v.string())),
+	advances_step: v.optional(v.boolean()),
+	step_assessment: v.optional(v.string()),
 });
 
 export async function runJudge(ctx: WorkingContext, proposal: Proposal, critiques: Critique[]): Promise<Verdict> {
-  const prompt = buildPrompt(ctx, proposal, critiques);
-  const result = await queryReasoning({ userPrompt: prompt, schema: verdictSchema });
-  return result.response;
+	const prompt = buildPrompt(ctx, proposal, critiques);
+	const result = await queryReasoning({ userPrompt: prompt, schema: verdictSchema, temperature: 0.1 });
+	return result.response;
 }
 
-function buildPrompt(
-  ctx: WorkingContext,
-  proposal: Proposal,
-  critiques: Critique[]
-): string {
-  const fatalCount = critiques.filter((c) => c.severity === "fatal").length;
-  const majorCount = critiques.filter((c) => c.severity === "major").length;
-  const constraintsBlock = ctx.active_constraints.length
-    ? `\nActive domain constraints (you must not violate):\n${ctx.active_constraints.map(c => `  - ${c}`).join("\n")}`
-    : "";
+function buildPrompt(ctx: WorkingContext, proposal: Proposal, critiques: Critique[]): string {
+	const fatalCritiques = critiques.filter(c => c.severity === "fatal");
+	const majorCritiques = critiques.filter(c => c.severity === "major");
+	const minorCritiques = critiques.filter(c => c.severity === "minor");
+	const nonRepairableFatals = fatalCritiques.filter(c => !c.repairable);
 
-  return `
+	const stepBlock = ctx.current_step ? `
+CURRENT STEP [${ctx.current_step.index}]: ${ctx.current_step.goal}
+  Success criteria: ${ctx.current_step.success_criteria}
+  Oracle: ${ctx.current_step.oracle_hint}` : "";
+
+	const constraintsBlock = ctx.active_constraints.length
+		? `\nACTIVE CONSTRAINTS:\n${ctx.active_constraints.map(c => `  - ${c}`).join("\n")}`
+		: "";
+
+	const critiqueBlock = critiques.map((c, i) =>
+		`  [${i + 1}] ${c.severity.toUpperCase()} | ${c.attack_type}: ${c.description}` +
+		(c.counterexample ? `\n       counterexample: ${c.counterexample}` : "") +
+		`\n       repairable: ${c.repairable}`
+	).join("\n");
+
+	return `
 You are a judge agent. Domain: ${ctx.domain}
-
-Proposal:
-  hypothesis: ${proposal.hypothesis}
-  expected_benefit: ${proposal.expected_benefit}
-
-Critiques (${critiques.length} total, ${fatalCount} fatal, ${majorCount} major):
-${critiques
-      .map(
-        (c, i) =>
-          `  [${i + 1}] severity=${c.severity} type=${c.attack_type}
-      ${c.description}
-      ${c.counterexample ? `counterexample: ${c.counterexample}` : ""}
-      repairable: ${c.repairable}`
-      )
-      .join("\n")}
-
+${stepBlock}
 ${constraintsBlock}
 
-Scoring guide:
-  - Start at 100, -40 per fatal, -15 per major, -5 per minor.
-  - +10 if builds on proven lemmas, +10 if executable complete.
-Routing:
-  - Any fatal + non-repairable -> kill
-  - Score < 40 -> kill
-  - Needs formal proof -> formalize
-  - Ready -> execute
+PROPOSAL:
+  hypothesis: ${proposal.hypothesis}
+  expected_benefit: ${proposal.expected_benefit}
+  assumptions: ${proposal.assumptions.join("; ")}
 
-Return ONLY valid JSON: { decision, score, reason, repairs? }
+CRITIQUES (${critiques.length} total — ${fatalCritiques.length} fatal / ${majorCritiques.length} major / ${minorCritiques.length} minor):
+${critiqueBlock}
+
+SCORING — start at 100, apply ALL that apply:
+  Deductions:
+    -35  non-repairable fatal critique
+    -20  repairable fatal critique
+    -10  major critique
+    -3   minor critique
+  Bonuses:
+    +15  proposal directly advances current step success_criteria
+    +10  builds on and cites proven lemmas
+    +8   executable is complete with no stubs or placeholders
+    +5   failure modes are thorough and honest
+
+  HARD KILL (set score=0, decision=kill immediately, no further scoring):
+    - Any non-repairable fatal critique
+    - Proposal violates an active constraint
+    - Executable contains TODO, stub, or placeholder
+    - Hypothesis is non-specific or non-testable ("use a better algorithm")
+
+ROUTING:
+  kill      → hard kill condition OR score < 45
+  formalize → score ≥ 45, no fatal, math/proof domain needs formal verification
+  execute   → score ≥ 45, no non-repairable fatals
+
+advances_step: true ONLY if this proposal would satisfy the current step's success_criteria verbatim.
+
+Hard kill triggered: ${nonRepairableFatals.length > 0 ? `YES (${nonRepairableFatals.length} non-repairable fatal) → score=0, decision=kill` : "no"}
+
+Return ONLY valid JSON:
+{
+  "decision": "execute|formalize|kill",
+  "score": 0-100,
+  "reason": "concise explanation",
+  "repairs": ["specific fix if repairable issues exist"],
+  "advances_step": true/false,
+  "step_assessment": "how this addresses the step goal"
+}
 `.trim();
 }

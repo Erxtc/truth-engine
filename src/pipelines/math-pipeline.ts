@@ -1,5 +1,4 @@
-export const mathStages: VerificationStage[] = [
-	syntaxCheck,             // checks Lean syntax
-	consistencyCheck,        // against known theorems
-	proofCheck,              // runs lean
-];
+import type { VerificationStage } from "../verification/types";
+
+// Stub — stages will be implemented when the math domain executor is built
+export const mathStages: VerificationStage[] = [];

@@ -10,6 +10,7 @@ export interface DB {
     currentStep: number
     createdAt: number
     updatedAt: number
+    requiredConfidence: number
   }
   artifacts: {
     id: string
@@ -29,6 +30,7 @@ export interface DB {
     provenance: string | null
     createdAt: number
     updatedAt: number
+    confidenceLevel: number
   }
   relations: {
     id: string

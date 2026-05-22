@@ -1,10 +1,12 @@
 import { KnowledgeGraph } from "./db/knowledge-graph";
-import { runProposer, runCritic, runJudge, runFormalizer, runRepair, runPlanner, estimateComplexity, resolveRunParams } from "./agents";
+import { runProposer, runCritic, runJudge, runFormalizer, runRepair, runPlanner, estimateComplexity, resolveRunParams, runSupervisor } from "./agents";
+import type { SupervisorDecision } from "./agents";
 import { runExecutor, type ExecutionOutcome } from "./executors/sandbox-runner";
 import { getDomainSpec } from "./executors/domains";
 import { runConsensus } from "./consensus/runner";
 import { getDomainInvariants } from "./core/context";
 import { ContextBuilder } from "./core/context-builder";
+import { HealthMonitor } from "./core/health-monitor";
 import { WorkspaceManager } from "./workspace/manager";
 import { runFeedbackAnalyzer, runLegislator } from "./analysis/feedback-manager";
 import { db } from "./db/client";
@@ -65,11 +67,17 @@ async function getLivingCount(problemId: string): Promise<number> {
 }
 
 // ── Module-level singletons ───────────────────────────────────────────────────
-const kg = new KnowledgeGraph();
-const workspace = new WorkspaceManager();
+const kg            = new KnowledgeGraph();
+const workspace     = new WorkspaceManager();
 const contextBuilder = new ContextBuilder(kg);
+const healthMonitor  = new HealthMonitor(kg);
 // Populated in main() before evolve() is called
 let domainSpec = getDomainSpec(DOMAIN);
+// Current run params — supervisor may escalate these mid-run
+let activeRunParams: import("./core/types").RunParams = {
+	maxDepth: MAX_DEPTH, maxBranches: MAX_BRANCHES, criticCount: CRITIC_COUNT,
+	requiredConfidence: 2, consensus: false, budgetLlmCalls: 200,
+};
 
 async function main() {
 	startUiServer();
@@ -122,6 +130,10 @@ async function main() {
 	MAX_DEPTH    = runParams.maxDepth;
 	MAX_BRANCHES = runParams.maxBranches;
 	CRITIC_COUNT = runParams.criticCount;
+	budgetLlmCalls = runParams.budgetLlmCalls;
+
+	// Keep activeRunParams in sync so the supervisor can read the current state
+	activeRunParams = { ...runParams };
 
 	const effectiveConfidence = runParams.requiredConfidence;
 
@@ -158,11 +170,63 @@ async function main() {
 		depth: 0,
 	});
 
-	const solvedViaEvolution = await evolve(root, 0);
+	// ── 6. Supervisor-guided evolution loop ─────────────────────────────────
+	// Phase structure per round:
+	//   round 0 — direct (1 proposal, 1 critic): cheapest possible attempt
+	//   round 1+ — full branches with complexity-estimated params
+	// After each failed round the supervisor analyses health and may:
+	//   escalate → increase branches/critics/depth
+	//   pivot    → inject a direction constraint the proposer must follow
+	//   abort    → stop trying
+	let solvedViaEvolution = false;
+	const MAX_SUPERVISOR_ROUNDS = Math.min(5, Math.ceil(budgetLlmCalls / 5));
+
+	for (let round = 0; round < MAX_SUPERVISOR_ROUNDS && !solvedViaEvolution && !budgetExhausted(); round++) {
+		if (round > 0) {
+			console.log(`\n[supervisor] Round ${round} — running health check…`);
+			const health = await healthMonitor.checkHealth(problem.id);
+
+			if (health.isStagnant || round >= 2) {
+				emit("info", `supervisor check: stagnant=${health.isStagnant} passRate=${(health.passRate * 100).toFixed(0)}%`);
+				const decision: SupervisorDecision = await runSupervisor(
+					resolvedDomain,
+					ROOT_PROBLEM_DESC.trim(),
+					health,
+					activeRunParams,
+				);
+
+				console.log(`[supervisor] decision=${decision.action}: ${decision.reason}`);
+				emit("info", `supervisor: ${decision.action} — ${decision.reason}`);
+
+				if (decision.action === "abort") {
+					console.log("[supervisor] Aborting run.");
+					break;
+				}
+				if (decision.action === "escalate") {
+					if (decision.newBranches > 0) { MAX_BRANCHES = decision.newBranches; activeRunParams.maxBranches = MAX_BRANCHES; }
+					if (decision.newCritics  > 0) { CRITIC_COUNT = decision.newCritics;  activeRunParams.criticCount  = CRITIC_COUNT; }
+					if (decision.newDepth    > 0) { MAX_DEPTH    = decision.newDepth;     activeRunParams.maxDepth     = MAX_DEPTH; }
+					console.log(`[supervisor] Escalated: branches=${MAX_BRANCHES} critics=${CRITIC_COUNT} depth=${MAX_DEPTH}`);
+				}
+				if (decision.action === "pivot" && decision.directionHint) {
+					await kg.createConstraintProposal({
+						problemId: problem.id,
+						title: decision.directionHint,
+						description: "Supervisor-directed pivot",
+						derivedFromInsightIds: [],
+					});
+					console.log(`[supervisor] Pivot constraint added: "${decision.directionHint}"`);
+				}
+			} else {
+				console.log(`[supervisor] Health OK (passRate=${(health.passRate * 100).toFixed(0)}%, improvement=${(health.improvementRate * 100).toFixed(0)}%) — continuing`);
+			}
+		}
+
+		solvedViaEvolution = await evolve(root, 0);
+	}
 
 	// ── Consensus phase ──────────────────────────────────────────────────────
-	// Driven by resolved runParams (complexity estimator + CLI overrides).
-	// Skip consensus if evolution already reached required confidence
+	// Skip if evolution already solved the problem at required confidence
 	const runConsensusPhase = runParams.consensus && !solvedViaEvolution;
 
 	if (runConsensusPhase) {

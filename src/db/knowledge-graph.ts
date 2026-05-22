@@ -429,4 +429,20 @@ export class KnowledgeGraph {
 		return rows as unknown as Artifact[];
 	}
 
+	/** Get the most recent N hypothesis/project attempts (both alive and dead) for health tracking */
+	async getRecentAttempts(
+		problemId: string,
+		limit = 8
+	): Promise<Array<{ id: string; score: number; status: string; hypothesisText: string | null }>> {
+		const rows = await db
+			.selectFrom("artifacts")
+			.select(["id", "score", "status", "hypothesisText"])
+			.where("problemId", "=", problemId)
+			.where("type", "in", ["hypothesis", "project"])
+			.orderBy("createdAt", "desc")
+			.limit(limit)
+			.execute();
+		return rows as unknown as Array<{ id: string; score: number; status: string; hypothesisText: string | null }>;
+	}
+
 }

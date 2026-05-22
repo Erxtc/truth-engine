@@ -133,4 +133,12 @@ export interface WorkingContext {
 	active_constraints: string[];
 	step_plan: StepPlan | null;
 	current_step: PlanStep | null;
+	/** Best known working solution for this problem (confidence ≥ 2). Guides the proposer. */
+	calibration_example?: {
+		hypothesis: string;
+		source_code: string;
+		score: number;
+	};
+	/** Approximate token count of this context object (diagnostic). */
+	token_budget_used?: number;
 }

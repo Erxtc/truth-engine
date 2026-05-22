@@ -73,6 +73,14 @@ CURRENT TARGET STEP [${ctx.current_step.index}]:
 		? `\nDEAD APPROACHES (do NOT repeat):\n${ctx.failed_approaches.slice(0, 5).map(f => `  ✗ ${f.summary} — ${f.reason}`).join("\n")}`
 		: "";
 
+	const calibrationBlock = ctx.calibration_example
+		? `\nCALIBRATION EXAMPLE (a solution that already passed — use as a reference baseline, then improve upon it):
+  Score: ${ctx.calibration_example.score}
+  Hypothesis: ${ctx.calibration_example.hypothesis.slice(0, 200)}
+  Source:
+${ctx.calibration_example.source_code.slice(0, 800).split("\n").map(l => `    ${l}`).join("\n")}`
+		: "";
+
 	const formatRules = getDomainFormatRules(ctx.domain);
 
 	return `
@@ -87,6 +95,7 @@ ${provenBlock}
 ${ancestorBlock}
 ${insightBlock}
 ${failedBlock}
+${calibrationBlock}
 
 EXECUTABLE FORMAT:
 ${formatRules}

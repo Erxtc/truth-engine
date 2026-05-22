@@ -3,7 +3,8 @@ import { runProposer, runCritic, runJudge, runFormalizer, runRepair, runPlanner,
 import { runExecutor, type ExecutionOutcome } from "./executors/sandbox-runner";
 import { getDomainSpec } from "./executors/domains";
 import { runConsensus } from "./consensus/runner";
-import { buildWorkingContext, getDomainInvariants } from "./core/context";
+import { getDomainInvariants } from "./core/context";
+import { ContextBuilder } from "./core/context-builder";
 import { WorkspaceManager } from "./workspace/manager";
 import { runFeedbackAnalyzer, runLegislator } from "./analysis/feedback-manager";
 import { db } from "./db/client";
@@ -60,6 +61,7 @@ async function getLivingCount(problemId: string): Promise<number> {
 // ── Module-level singletons ───────────────────────────────────────────────────
 const kg = new KnowledgeGraph();
 const workspace = new WorkspaceManager();
+const contextBuilder = new ContextBuilder(kg);
 // Populated in main() before evolve() is called
 let domainSpec = getDomainSpec(DOMAIN);
 
@@ -219,7 +221,7 @@ async function evolve(
 		return;
 	}
 
-	const context = await buildWorkingContext(kg, parent);
+	const context = await contextBuilder.build(parent);
 
 	// 1. Propose
 	console.log(`\n[depth ${depth}] Proposing from ${parent.id}…`);

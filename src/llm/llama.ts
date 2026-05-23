@@ -3,6 +3,7 @@ import * as v from 'valibot';
 import { jsonrepair } from 'jsonrepair';
 import { CustomError } from '../utils/log';
 import { ThrottledSemaphore, valibotParse } from '../utils/general';
+import { quietMode } from '../utils/prompt-logger';
 import { logLlmStart, logLlmResult } from '../utils/prompt-logger';
 import { emit } from '../ui/events';
 
@@ -19,6 +20,10 @@ export interface LlmQueryOptions<T extends v.GenericSchema> {
     temperature?: number;
     maxTokens?: number;
     modelConfig?: LlamaModelConfig;
+    /** Agent role for logging (e.g. "proposer", "judge", "critic") */
+    _role?: string;
+    /** Transform parsed JSON before schema validation (fixes model output quirks) */
+    preprocess?: (raw: object) => object;
 }
 
 export interface QueryLlmResponse<T> {
@@ -44,17 +49,14 @@ const semaphore = new ThrottledSemaphore(2);
  */
 function fixJson(input: string): object {
     let wrapped = input.trim();
-    // Strip markdown code fences the model often wraps output in
+    // Strip markdown code fences
     wrapped = wrapped.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
-    // Repair before array-merge so jsonrepair can normalise nested issues first
-    wrapped = wrapped.replace(/"([^"]*?)'([^"]*?)"/g, `"$1\\'$2"`);
-    wrapped = wrapped.replace(/:\s*'([^']*?)'/g, ': "$1"');
-    // If the model returned an array of objects, merge their contents into one object
-    if (wrapped.startsWith('[')) {
-        try {
+
+    // Try jsonrepair first — it handles most issues natively
+    try {
+        if (wrapped.startsWith('[')) {
             const arr = JSON.parse(jsonrepair(wrapped));
             if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === 'object') {
-                // Merge: for array-valued keys (like "proposals"), concatenate the arrays
                 const merged: Record<string, unknown> = {};
                 for (const item of arr) {
                     for (const [k, v] of Object.entries(item as Record<string, unknown>)) {
@@ -67,9 +69,17 @@ function fixJson(input: string): object {
                 }
                 return merged;
             }
-        } catch { /* fall through to single-object path */ }
+            return arr; // non-object array, return as-is
+        }
+        if (!wrapped.startsWith('{') && !wrapped.startsWith('[')) wrapped = `{${wrapped}}`;
+        return JSON.parse(jsonrepair(wrapped));
+    } catch {
+        // jsonrepair failed — try regex-based fixes for single-quoted keys/values
     }
-    if (!wrapped.startsWith('{')) wrapped = `{${wrapped}}`;
+
+    wrapped = wrapped.replace(/"([^"]*?)'([^"]*?)"/g, `"$1\\'$2"`);
+    wrapped = wrapped.replace(/:\s*'([^']*?)'/g, ': "$1"');
+    if (!wrapped.startsWith('{') && !wrapped.startsWith('[')) wrapped = `{${wrapped}}`;
     const repaired = jsonrepair(wrapped);
     return JSON.parse(repaired);
 }
@@ -172,6 +182,11 @@ export async function queryLlamaCpp<T extends v.GenericSchema>(
             }
         }
 
+        // Apply preprocessor if provided (e.g., unfurl flattened keys)
+        if (options.preprocess && typeof parsedJson === "object" && parsedJson !== null) {
+            parsedJson = options.preprocess(parsedJson);
+        }
+
         let validated: v.InferOutput<T>;
         try {
             validated = valibotParse(options.schema, parsedJson);
@@ -181,7 +196,14 @@ export async function queryLlamaCpp<T extends v.GenericSchema>(
             throw err;
         }
 
-        logLlmResult(callNum, { rawContent, rawContentStripped, parsedJson, validatedResult: validated, error: null, retried, durationMs: Date.now() - t0, usage: data.usage });
+        const durationMs = Date.now() - t0;
+        logLlmResult(callNum, { rawContent, rawContentStripped, parsedJson, validatedResult: validated, error: null, retried, durationMs, usage: data.usage });
+        // Console summary (unless --quiet)
+        if (!quietMode) {
+            const role = options._role ?? 'llm';
+            const tok = data.usage ? ` ${data.usage.total_tokens}tk` : '';
+            console.log(`  [${role}] ✓ ${durationMs}ms${tok}${retried ? ' (retried)' : ''}`);
+        }
         return { response: validated, usage: data.usage };
     } finally {
         semaphore.release();

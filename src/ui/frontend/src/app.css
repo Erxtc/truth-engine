@@ -1,0 +1,46 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:     #0d1117;
+  --bg2:    #161b22;
+  --bg3:    #21262d;
+  --bg4:    #2d333b;
+  --border: #30363d;
+  --text:   #e6edf3;
+  --text2:  #8b949e;
+  --text3:  #6e7681;
+
+  --green:  #3fb950;
+  --red:    #f85149;
+  --yellow: #d29922;
+  --blue:   #58a6ff;
+  --purple: #bc8cff;
+  --orange: #ffa657;
+  --cyan:   #39d353;
+
+  --think-bg:     #0c0900;
+  --think-border: #3d3000;
+  --think-text:   #c4a84e;
+  --resp-bg:      #070f1a;
+  --resp-border:  #1b3a5c;
+  --resp-text:    #79c0ff;
+
+  font-size: 13px;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+html, body, #app {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Scrollbars */
+::-webkit-scrollbar        { width: 4px; height: 4px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: var(--bg4); border-radius: 2px; }
+
+/* Keyframes */
+@keyframes spin  { to { transform: rotate(360deg); } }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }

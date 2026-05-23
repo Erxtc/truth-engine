@@ -17,79 +17,54 @@ const verdictSchema = v.object({
 
 export async function runJudge(ctx: WorkingContext, proposal: Proposal, critiques: Critique[]): Promise<Verdict> {
 	const prompt = buildPrompt(ctx, proposal, critiques);
-	const result = await queryReasoning({ userPrompt: prompt, schema: verdictSchema, temperature: 0.1 });
+	const result = await queryReasoning({ userPrompt: prompt, schema: verdictSchema, temperature: 0.1, _role: 'judge' });
 	return result.response;
 }
 
 function buildPrompt(ctx: WorkingContext, proposal: Proposal, critiques: Critique[]): string {
-	const fatalCritiques = critiques.filter(c => c.severity === "fatal");
-	const majorCritiques = critiques.filter(c => c.severity === "major");
-	const minorCritiques = critiques.filter(c => c.severity === "minor");
-	const nonRepairableFatals = fatalCritiques.filter(c => !c.repairable);
-
 	const stepBlock = ctx.current_step ? `
 CURRENT STEP [${ctx.current_step.index}]: ${ctx.current_step.goal}
-  Success criteria: ${ctx.current_step.success_criteria}
-  Oracle: ${ctx.current_step.oracle_hint}` : "";
+  Success criteria: ${ctx.current_step.success_criteria}` : "";
 
-	const constraintsBlock = ctx.active_constraints.length
-		? `\nACTIVE CONSTRAINTS:\n${ctx.active_constraints.map(c => `  - ${c}`).join("\n")}`
-		: "";
-
-	const critiqueBlock = critiques.map((c, i) =>
-		`  [${i + 1}] ${c.severity.toUpperCase()} | ${c.attack_type}: ${c.description}` +
-		(c.counterexample ? `\n       counterexample: ${c.counterexample}` : "") +
-		`\n       repairable: ${c.repairable}`
-	).join("\n");
+	const critiqueBlock = critiques.length > 0
+		? critiques.map((c, i) =>
+			`  [${i + 1}] ${c.severity.toUpperCase()} | ${c.attack_type}: ${c.description}` +
+			(c.counterexample ? `\n       counterexample: ${c.counterexample}` : "")
+		).join("\n")
+		: "  (no critiques)";
 
 	return `
-You are a judge agent. Domain: ${ctx.domain}
+You are a gatekeeper. Your ONLY job: catch obviously broken code before execution.
+
+Domain: ${ctx.domain}
 ${stepBlock}
-${constraintsBlock}
 
-PROPOSAL:
-  hypothesis: ${proposal.hypothesis}
-  expected_benefit: ${proposal.expected_benefit}
-  assumptions: ${proposal.assumptions.join("; ")}
+PROBLEM: ${ctx.problem.slice(0, 300)}
 
-CRITIQUES (${critiques.length} total — ${fatalCritiques.length} fatal / ${majorCritiques.length} major / ${minorCritiques.length} minor):
+PROPOSAL: ${proposal.hypothesis}
+
+CRITIQUES (${critiques.length} total):
 ${critiqueBlock}
 
-SCORING — start at 100, apply ALL that apply:
-  Deductions:
-    -35  non-repairable fatal critique
-    -20  repairable fatal critique
-    -10  major critique
-    -3   minor critique
-  Bonuses:
-    +15  proposal directly advances current step success_criteria
-    +10  builds on and cites proven lemmas
-    +8   executable is complete with no stubs or placeholders
-    +5   failure modes are thorough and honest
+SCORING:
+  Base: 80.
+  The EXECUTION SANDBOX is the real verifier — it will run the code and check the answer.
+  You only catch OBVIOUS problems:
+    - TODO/stub/placeholder in code → score 0, KILL
+    - Syntax error / obviously crashes → score 10
+    - Returns completely wrong type → score 30
+    - Otherwise → execute (score 70-95)
+  Do NOT try to verify mathematical correctness. That is the sandbox's job.
+  Critiques about "the answer is wrong" without proof → ignore. Let execution decide.
 
-  HARD KILL (set score=0, decision=kill immediately, no further scoring):
-    - Any non-repairable fatal critique
-    - Proposal violates an active constraint
-    - Executable contains TODO, stub, or placeholder
-    - Hypothesis is non-specific or non-testable ("use a better algorithm")
+DECISION:
+  kill      → score < 20, OR code has TODO/stub/placeholder text
+  execute   → score >= 20 (DEFAULT — let almost everything through)
+  formalize → math/proof domain only
 
-ROUTING:
-  kill      → hard kill condition OR score < 45
-  formalize → score ≥ 45, no fatal, math/proof domain needs formal verification
-  execute   → score ≥ 45, no non-repairable fatals
-
-advances_step: true ONLY if this proposal would satisfy the current step's success_criteria verbatim.
-
-Hard kill triggered: ${nonRepairableFatals.length > 0 ? `YES (${nonRepairableFatals.length} non-repairable fatal) → score=0, decision=kill` : "no"}
+advances_step: true if this likely satisfies the step goal.
 
 Return ONLY valid JSON:
-{
-  "decision": "execute|formalize|kill",
-  "score": 0-100,
-  "reason": "concise explanation",
-  "repairs": ["specific fix if repairable issues exist"],
-  "advances_step": true/false,
-  "step_assessment": "how this addresses the step goal"
-}
+{ "decision": "execute", "score": 85, "reason": "Code is runnable, let execution verify.", "advances_step": true, "step_assessment": "Will verify" }
 `.trim();
 }

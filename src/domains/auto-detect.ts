@@ -18,6 +18,7 @@ import type { DomainSpec } from "../executors/domains/registry";
 import type { Proposal, WorkingContext } from "../core/types";
 import type { Artifact } from "../db/schema";
 import { transpileToJs } from "../utils/general";
+import { validateAndFixPython, validateAndFixJs } from "../utils/code-validator";
 import { execSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
@@ -41,32 +42,34 @@ const customDomainSchema = v.object({
 
 // ── Domain classification ─────────────────────────────────────────────────────
 
-async function classifyDomain(problem: string, registered: string[]): Promise<{ matched: string | null; confidence: number }> {
+async function classifyDomain(problem: string, _registered: string[]): Promise<{ matched: string | null; confidence: number }> {
 	const prompt = `
 You are a domain classifier for an automated problem-solving system.
-
-Registered domains: ${registered.join(", ")}
 
 Problem statement:
 ${problem}
 
-Does this problem clearly fit one of the registered domains?
-- "sorting": algorithm to sort a collection
-- "compression": lossless data compression algorithm
-- "math": formal mathematical proof
-- "physics": physical simulation
-- "ml": machine learning model training
-- "typescript": TypeScript code/project
-- "python": Python code/project
-- "c": C code/project
-- "project": multi-file software project
+Does this problem clearly fit one of these SPECIFIC domains?
+- "sorting": ONLY if the problem literally says "implement merge sort", "implement quicksort", "implement bubble sort", etc. — the word "sort" must describe what to BUILD, not how to solve it.
+- "compression": the ONLY goal is lossless data compression/decompression
+- "math": a formal mathematical PROOF in Lean4 or Coq — NOT arithmetic, NOT code
+- "project": a multi-file software project with build/test commands
 
-If the problem clearly fits a domain, set matched_domain to that domain name.
-If it does not clearly fit any domain (new kind of problem, mixed domain, research question, etc.), set matched_domain to null.
-Set confidence between 0 and 1.
+ALWAYS RETURN null FOR (no matter how high your confidence):
+- "find the kth largest" → null (uses sorting internally, not a sorting problem)
+- "topological sort" → null (graph algorithm, not a sorting algorithm)
+- "group/count/frequency" → null
+- Any function that computes a single answer value
+- Any function involving primes, fibonacci, parentheses, arrays, strings, graphs, DP, cycles, paths
+- Arithmetic ("what is X*Y") → null
+- Any problem that USES sorting as a technique but isn't IMPLEMENTING a sort algorithm
+- "detect cycle", "find path", "count islands", "shortest path" → null (graph problems)
+
+Only return a domain if you are HIGHLY confident (>= 0.8) it fits exactly.
+If in doubt, return null — a custom domain will be generated.
 
 Return ONLY valid JSON:
-{ "matched_domain": "sorting" | null, "confidence": 0.0-1.0, "reasoning": "brief explanation" }
+{ "matched_domain": "sorting" | "compression" | "math" | "project" | null, "confidence": 0.0-1.0, "reasoning": "brief explanation" }
 `.trim();
 
 	try {
@@ -79,7 +82,72 @@ Return ONLY valid JSON:
 
 // ── Custom domain generation ──────────────────────────────────────────────────
 
+// Build oracle examples as plain objects so JSON.stringify handles all escaping.
+function buildOracleExamples(): string {
+	const examples = [
+		{
+			domain_name: "arithmetic",
+			invariants: ["Result must be the mathematical product", "Function must return a number"],
+			required_confidence: 2,
+			oracle_js: "function verify(fn) { var out = fn(); var exp = 15 * 17; if (out === exp) return { passed: true, reason: \"correct\" }; return { passed: false, reason: \"wrong-answer\" }; }",
+			solution_format: "A function proposedSolution() that returns 255 (the product of 15 and 17)",
+		},
+		{
+			domain_name: "prime_check",
+			invariants: ["Returns boolean", "True for primes, false otherwise", "Handles edge cases 0 and 1"],
+			required_confidence: 2,
+			oracle_js: "function verify(fn) { if (fn(17) !== true) return { passed: false, reason: \"17-not-prime\" }; if (fn(15) !== false) return { passed: false, reason: \"15-is-prime\" }; if (fn(1) !== false) return { passed: false, reason: \"1-is-prime\" }; if (fn(2) !== true) return { passed: false, reason: \"2-not-prime\" }; return { passed: true, reason: \"ok\" }; }",
+			solution_format: "A function proposedSolution(n) that returns true if n is prime, false otherwise",
+		},
+		{
+			domain_name: "fibonacci",
+			invariants: ["Returns number", "Base cases: fib(0)=0, fib(1)=1"],
+			required_confidence: 2,
+			oracle_js: "function verify(fn) { if (fn(0) !== 0) return { passed: false, reason: \"fib0-fail\" }; if (fn(1) !== 1) return { passed: false, reason: \"fib1-fail\" }; if (fn(10) !== 55) return { passed: false, reason: \"fib10-fail\" }; return { passed: true, reason: \"ok\" }; }",
+			solution_format: "A function proposedSolution(n) that returns the nth Fibonacci number",
+		},
+		{
+			domain_name: "generate_parentheses",
+			invariants: ["Returns list of strings", "Each string has correct length 2*n", "Each string is balanced", "Count matches Catalan number"],
+			required_confidence: 2,
+			// For list-return problems: check count, then check each item is valid — never hardcode the full expected list.
+			// A valid n-pair parentheses string: length == 2n, balanced (no prefix has more ')' than '(').
+			oracle_js: "function verify(fn) { function isValid(s) { var d = 0; for (var i = 0; i < s.length; i++) { d += s[i] === '(' ? 1 : -1; if (d < 0) return false; } return d === 0; } var r1 = fn(1); if (!Array.isArray(r1) || r1.length !== 1) return { passed: false, reason: \"n1-count\" }; if (!isValid(r1[0])) return { passed: false, reason: \"n1-invalid\" }; var r2 = fn(2); if (!Array.isArray(r2) || r2.length !== 2) return { passed: false, reason: \"n2-count\" }; for (var i = 0; i < r2.length; i++) { if (!isValid(r2[i]) || r2[i].length !== 4) return { passed: false, reason: \"n2-invalid\" }; } var r3 = fn(3); if (!Array.isArray(r3) || r3.length !== 5) return { passed: false, reason: \"n3-count\" }; for (var i = 0; i < r3.length; i++) { if (!isValid(r3[i]) || r3[i].length !== 6) return { passed: false, reason: \"n3-invalid\" }; } return { passed: true, reason: \"ok\" }; }",
+			solution_format: "A function proposedSolution(n) that returns a list of all valid combinations of n pairs of parentheses",
+		},
+		{
+			domain_name: "prime_factors",
+			invariants: ["Returns sorted list of prime factors with repetition", "12 = [2,2,3], 18 = [2,3,3], 7 = [7]"],
+			required_confidence: 2,
+			// Count each expected factor individually — NEVER use sum or length only.
+			// Sort output before comparing so order doesn't matter.
+			oracle_js: "function verify(fn) { function check(n, exp) { var got = fn(n).slice().sort(function(a,b){return a-b;}); if (got.length !== exp.length) return \"len-\" + n; for (var i=0;i<exp.length;i++) { if (got[i] !== exp[i]) return \"val-\" + n; } return null; } var e12=check(12,[2,2,3]); if(e12) return {passed:false,reason:e12}; var e18=check(18,[2,3,3]); if(e18) return {passed:false,reason:e18}; var e7=check(7,[7]); if(e7) return {passed:false,reason:e7}; var e1=check(1,[]); if(e1) return {passed:false,reason:e1}; return {passed:true,reason:\"ok\"}; }",
+			solution_format: "A function proposedSolution(n) that returns a sorted list of prime factors of n (with repetition)",
+		},
+		{
+			domain_name: "word_frequency",
+			invariants: ["Returns dict/object mapping each word to its count", "Case-insensitive", "Punctuation stripped"],
+			required_confidence: 2,
+			// Check each key individually — NEVER sum totals or aggregate.
+			oracle_js: "function verify(fn) { var r = fn(\"the cat sat on the mat\"); if (typeof r !== 'object' || r === null) return {passed:false,reason:\"not-object\"}; if (r[\"the\"] !== 2) return {passed:false,reason:\"the-count\"}; if (r[\"cat\"] !== 1) return {passed:false,reason:\"cat-count\"}; if (r[\"sat\"] !== 1) return {passed:false,reason:\"sat-count\"}; if (r[\"mat\"] !== 1) return {passed:false,reason:\"mat-count\"}; var r2 = fn(\"hello world hello\"); if (r2[\"hello\"] !== 2) return {passed:false,reason:\"hello-count\"}; if (r2[\"world\"] !== 1) return {passed:false,reason:\"world-count\"}; return {passed:true,reason:\"ok\"}; }",
+			solution_format: "A function proposedSolution(s) that returns a dict mapping each word to its frequency count",
+		},
+	];
+	return examples.map(e => JSON.stringify(e, null, 2)).join("\n\n");
+}
+
+// Replace non-JSON-serializable JS literals so oracle comparisons don't blow up.
+// Infinity → 1e308, -Infinity → -1e308, NaN → null (all JSON-safe and distinct enough for oracle checks).
+function sanitizeOracleJs(js: string): string {
+	return js
+		.replace(/\bInfinity\b/g, "1e308")
+		.replace(/-1e308/g, "-1e308")  // already fine, leave as is
+		.replace(/\bNaN\b/g, "null")
+		.replace(/\bundefined\b/g, "null");
+}
+
 async function generateCustomDomain(problem: string): Promise<DomainSpec | null> {
+	const examples = buildOracleExamples();
 	const prompt = `
 You are designing a verification system for an automated problem-solving engine.
 
@@ -88,60 +156,79 @@ ${problem}
 
 Your task: design a domain spec that can verify proposed solutions to this problem.
 
-Rules:
-- domain_name: short snake_case identifier (e.g. "fibonacci", "graph_coloring")
-- invariants: 2-6 properties that every valid solution MUST satisfy
-- required_confidence: 2 for most problems, 3 if independent agreement is needed, 4 only for formal proofs
-- oracle_js: a complete JavaScript function \`verify(output, input)\` that:
-  * receives the solution's output and the original input
-  * returns { passed: boolean, reason: string }
-  * must be self-contained (no imports)
-  * must handle edge cases without crashing
-- solution_format: one paragraph describing what a valid solution looks like (code, proof, explanation, etc.)
+CRITICAL — oracle design rules:
+  1. oracle_js is a JavaScript function verify(fn) where fn is the proposed solution function.
+  2. Call fn ONLY with inputs explicitly given in the problem statement. Do NOT invent test inputs.
+  3. Copy expected values VERBATIM from the problem statement — NEVER compute or re-derive them yourself.
+     If problem says "f(12)=[2,2,3]", write: var exp=[2,2,3]; (3 elements, copied exactly as stated)
+  4. For lists that could come in any order: sort both before comparing. Example:
+     var got=fn(n).slice().sort(); var exp=[2,2,3]; if(JSON.stringify(got)!==JSON.stringify(exp)) return {passed:false,reason:"fail"};
+  5. For dict/object returns: check each expected key individually, no aggregate sum checks.
+  6. For equations: verify by substituting into the equations.
+  7. reason strings: SHORT HYPHENATED WORDS only, no concatenation. Examples: "wrong", "f12-fail", "ok".
+  8. NO sum/total/aggregate checks — they cause false negatives. Only check the values stated in the problem.
+  9. PRESERVE input formats EXACTLY as shown in the problem. If the problem says graph[u] = [(v,w), ...] (list of pairs),
+     use arrays-of-arrays in JS: {"A": [["B",1],["C",4]], "D": []} — NEVER convert to {v: w} dict-of-dicts.
+     The solver will receive the EXACT structure you pass to fn(), so it must match what the problem describes.
+ 10. For graph/tree inputs: include ALL nodes as keys (with [] or {} for terminal nodes with no outgoing edges).
+ 11. CRITICAL for in-place mutation: the solution runs in a subprocess — it CANNOT mutate JS variables.
+     ALWAYS capture the return value and check it: var r = fn(x); if (r[0][0] !== 7) ...
+     NEVER check the original variable after calling fn: fn(m1); if (m1[0][0] ... // WRONG — m1 is unchanged
+     The harness returns the first argument when the function returns null/None, so in-place mutations are visible via the return value.
 
-EXAMPLE for a "fibonacci" problem:
-{
-  "domain_name": "fibonacci",
-  "invariants": [
-    "fib(0) = 0, fib(1) = 1",
-    "fib(n) = fib(n-1) + fib(n-2) for n >= 2",
-    "Function must handle n up to 50 without overflow"
-  ],
-  "required_confidence": 2,
-  "oracle_js": "function verify(output, input) { const expected = [0,1,1,2,3,5,8,13,21,34]; for (let i=0;i<10;i++) { if (output(i) !== expected[i]) return { passed: false, reason: 'fib(' + i + ') returned ' + output(i) + ' expected ' + expected[i] }; } return { passed: true, reason: 'All test cases passed' }; }",
-  "solution_format": "A JavaScript function proposedFib(n) that returns the nth Fibonacci number"
-}
+Fields:
+  domain_name: short snake_case identifier
+  invariants: 2-6 properties every valid solution must satisfy
+  required_confidence: 2 (use 3 only if independent agreement is needed)
+  oracle_js: JavaScript function verify(fn) → { passed: boolean, reason: string }
+  solution_format: one sentence describing expected function signature and return value
 
-Return ONLY valid JSON matching the structure above.
-`.trim();
+EXAMPLES (copy this exact JSON structure):
+${examples}
 
-	try {
-		const result = await queryReasoning({ userPrompt: prompt, schema: customDomainSchema, temperature: 0.2 });
-		const r = result.response;
+Return ONLY valid JSON matching the structure above.`.trim();
 
-		const oracleJs = transpileToJs(r.oracle_js);
+	// Try up to 3 times. On failure, include the error and demand a simpler oracle.
+	let lastError: unknown;
+	for (let attempt = 0; attempt < 3; attempt++) {
+		const retryHint = attempt === 0 ? "" : `
 
-		// Build a minimal DomainSpec backed by the generated oracle
-		const spec: DomainSpec = {
-			name: r.domain_name,
-			invariants: r.invariants,
-			requiredConfidence: r.required_confidence as 1 | 2 | 3 | 4,
-			solutionFormat: r.solution_format,
-			async run(proposal: Proposal, _ctx: WorkingContext, artifact: Artifact) {
-				return runCustomOracle(oracleJs, proposal, artifact, r.domain_name);
-			},
-		};
+PREVIOUS ATTEMPT FAILED: ${lastError instanceof Error ? lastError.message.slice(0, 200) : String(lastError)}
+COMMON CAUSE: unescaped double quotes in oracle_js reason strings, or string concatenation in reasons.
+FIX: Use ONLY simple one-word reasons. No "+" concatenation. No variable interpolation.
+GOOD: reason: "fail"   BAD: reason: "test-" + i + "-fail"`;
 
-		registerDomain(spec);
-		console.log(`[auto-detect] Registered custom domain: "${r.domain_name}"`);
-		console.log(`  Invariants: ${r.invariants.length}`);
-		console.log(`  Required confidence: ${r.required_confidence}`);
-		console.log(`  Solution format: ${r.solution_format}`);
-		return spec;
-	} catch (err) {
-		console.error("[auto-detect] Failed to generate custom domain:", err);
-		return null;
+		const fullPrompt = prompt + retryHint;
+		try {
+			const result = await queryReasoning({ userPrompt: fullPrompt, schema: customDomainSchema, temperature: attempt === 0 ? 0.2 : 0.1 });
+			const r = result.response;
+			const oracleJs = sanitizeOracleJs(transpileToJs(r.oracle_js));
+
+			const spec: DomainSpec = {
+				name: r.domain_name,
+				invariants: r.invariants,
+				requiredConfidence: r.required_confidence as 1 | 2 | 3 | 4,
+				solutionFormat: r.solution_format,
+				async run(proposal: Proposal, _ctx: WorkingContext, artifact: Artifact) {
+					return runCustomOracle(oracleJs, proposal, artifact, r.domain_name);
+				},
+			};
+
+			registerDomain(spec);
+			if (attempt > 0) console.log(`[auto-detect] Domain generation succeeded on attempt ${attempt + 1}`);
+			console.log(`[auto-detect] Registered custom domain: "${r.domain_name}"`);
+			console.log(`  Invariants: ${r.invariants.length}`);
+			console.log(`  Required confidence: ${r.required_confidence}`);
+			console.log(`  Solution format: ${r.solution_format}`);
+			return spec;
+		} catch (err) {
+			lastError = err;
+			console.warn(`[auto-detect] Domain generation attempt ${attempt + 1} failed: ${err instanceof Error ? err.message.slice(0, 120) : err}`);
+		}
 	}
+
+	console.error("[auto-detect] All domain generation attempts failed");
+	return null;
 }
 
 // ── Custom oracle runner ──────────────────────────────────────────────────────
@@ -153,9 +240,10 @@ function runCustomOracle(
 	domainName: string
 ) {
 	const { overallPassed, stages, finalMetrics } = (() => {
-		// Custom oracle stage: execute the verify() function against the proposal's output
-		const sourceCode = artifact.sourceCode ?? (proposal.executable.type === "code" ? proposal.executable.source : null);
-
+		const rawSource = artifact.sourceCode ?? (proposal.executable.type === "code" ? proposal.executable.source : null);
+		const sourceCode = rawSource
+			? rawSource.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\'/g, "'")
+			: null;
 		if (!sourceCode) {
 			return {
 				overallPassed: false,
@@ -164,55 +252,127 @@ function runCustomOracle(
 			};
 		}
 
-		const harness = `
-${transpileToJs(sourceCode)}
-
-${oracleJs}
-
-let result;
-try {
-  // Pass the proposedSolution function (or any exported name) as output
-  const fn = typeof proposedSolution !== 'undefined' ? proposedSolution
-           : typeof solution !== 'undefined' ? solution
-           : typeof main !== 'undefined' ? main
-           : null;
-  result = verify(fn, null);
-  // Also capture the actual return value for display in the final answer
-  if (result.passed && fn) {
-    try { result.output = JSON.stringify(fn()); } catch(_) {}
-  }
-} catch(e) {
-  result = { passed: false, reason: 'Oracle threw: ' + e.message };
-}
-process.stdout.write(JSON.stringify(result));
-`.trim();
-
-		const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `truth-custom-${domainName}-`));
-		const tmpFile = path.join(tmpDir, "oracle.js");
+		const lang = proposal.executable.type === "code" ? proposal.executable.lang : "js";
+		const isPython = lang === "python";
 		const start = Date.now();
+		const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `truth-custom-${domainName}-`));
 
 		try {
-			fs.writeFileSync(tmpFile, harness);
-			const raw = execSync(`node ${tmpFile}`, { timeout: 15_000, stdio: "pipe" }).toString().trim();
-			const r = JSON.parse(raw) as { passed: boolean; reason: string; output?: string };
-			if (r.passed && r.output !== undefined) {
-				console.log(`  [oracle] Computed output: ${r.output}`);
+			// ── Verify with oracle — pass the function (or a thunk for Python) ──
+			let verifyHarness: string;
+
+			if (isPython) {
+				// Normalize literal escape sequences first (jsonrepair may have escaped real newlines)
+				const rawNorm = sourceCode
+					.replace(/\\n/g, "\n")
+					.replace(/\\t/g, "\t")
+					.replace(/\\'/g, "'");
+
+				// Run pre-execution validator: auto-fix common 7B model issues
+				const validation = validateAndFixPython(rawNorm);
+				if (!validation.ok) {
+					return {
+						overallPassed: false,
+						stages: [{ stageName: "CustomOracle", passed: false, reason: validation.error ?? "Syntax error", runtimeMs: Date.now() - start }],
+						finalMetrics: {},
+					};
+				}
+				if (validation.autoFixed) {
+					console.log(`  [validator] Auto-fixed Python source before execution`);
+				}
+				const normalizedSource = validation.source;
+				const pyFile = path.join(tmpDir, "solution.py");
+				const pyWrapper = `import sys, json, math\n${normalizedSource}\n\ndef _json_safe(v):\n    if isinstance(v, float) and (math.isinf(v) or math.isnan(v)):\n        return None\n    return v\n\n_args = json.loads(sys.stdin.read() or "[]")\n_result = proposedSolution(*_args)\n# If function returned None (in-place mutation), return the mutated first arg so the oracle can check it\nif _result is None and _args:\n    _result = _args[0]\nprint(json.dumps(_json_safe(_result)))`;
+				fs.writeFileSync(pyFile, pyWrapper);
+				// JS fn(args...) → calls python3 solution.py with args as JSON on stdin
+				const pyFileSafe = JSON.stringify(pyFile);
+				verifyHarness = `
+var { execFileSync } = require('child_process');
+var __lastPyError = null;
+var __fn = function() {
+  var _args = Array.prototype.slice.call(arguments);
+  var _raw;
+  try {
+    _raw = execFileSync('python3', [${pyFileSafe}], { input: JSON.stringify(_args), timeout: 10000 }).toString().trim();
+  } catch (_e) {
+    __lastPyError = (_e.stderr ? _e.stderr.toString() : _e.message || 'crash').split('\\n').filter(function(l){return l.trim();}).slice(-3).join(' | ');
+    throw new Error('py-crash: ' + __lastPyError);
+  }
+  if (!_raw) { __lastPyError = 'empty output from python'; throw new Error('py-empty'); }
+  var _result;
+  try { _result = JSON.parse(_raw); } catch(_e2) { __lastPyError = 'bad json: ' + _raw.slice(0,80); throw new Error('py-json'); }
+  // Mirror Python in-place mutations back to the JS caller's array/object.
+  if (_result !== null && typeof _result === 'object' && _args.length > 0 && typeof _args[0] === 'object') {
+    var _a0 = _args[0];
+    if (Array.isArray(_result) && Array.isArray(_a0)) {
+      for (var _i = 0; _i < _result.length; _i++) {
+        if (Array.isArray(_result[_i]) && Array.isArray(_a0[_i])) {
+          for (var _j = 0; _j < _result[_i].length; _j++) { _a0[_i][_j] = _result[_i][_j]; }
+        } else { _a0[_i] = _result[_i]; }
+      }
+    }
+  }
+  return _result;
+};
+${oracleJs}
+var __result;
+try {
+  __result = verify(__fn);
+} catch (_verifyErr) {
+  __result = { passed: false, reason: __lastPyError ? __lastPyError.slice(0, 200) : (_verifyErr.message || 'verify-threw').slice(0, 200) };
+}
+process.stdout.write(JSON.stringify(__result));
+`.trim();
+			} else {
+				// JS: validate syntax before running
+				const jsValidation = validateAndFixJs(transpileToJs(sourceCode));
+				if (!jsValidation.ok) {
+					return {
+						overallPassed: false,
+						stages: [{ stageName: "CustomOracle", passed: false, reason: jsValidation.error ?? "JS syntax error", runtimeMs: Date.now() - start }],
+						finalMetrics: {},
+					};
+				}
+				// JS: pass the actual function to verify(fn) so oracle can call fn(input)
+				verifyHarness = `
+${jsValidation.source}
+
+var __fn = typeof proposedSolution !== 'undefined' ? proposedSolution
+         : typeof solution !== 'undefined' ? solution
+         : typeof main !== 'undefined' ? main
+         : null;
+if (!__fn) throw new Error('No exported function found');
+${oracleJs}
+var __result = verify(__fn);
+process.stdout.write(JSON.stringify(__result));
+`.trim();
 			}
+
+			const verifyFile = path.join(tmpDir, "verify.js");
+			fs.writeFileSync(verifyFile, verifyHarness);
+			const raw = execSync(`node ${verifyFile}`, { timeout: 10_000, stdio: "pipe" }).toString().trim();
+			const r = JSON.parse(raw) as { passed: boolean; reason: string };
+
+			if (r.passed) {
+				console.log(`  [oracle] Passed: ${r.reason}`);
+			}
+
 			return {
 				overallPassed: r.passed,
 				stages: [{
 					stageName: "CustomOracle",
 					passed: r.passed,
 					reason: r.passed ? undefined : r.reason,
-					artifacts: r.output !== undefined ? { computed_output: r.output } : undefined,
+					artifacts: r.passed ? { computed_output: r.reason } : undefined,
 					runtimeMs: Date.now() - start,
 				}],
 				finalMetrics: {},
 			};
 		} catch (err: any) {
+			const errMsg = err.stderr?.toString().slice(0, 600) ?? err.message ?? String(err);
 			return {
 				overallPassed: false,
-				stages: [{ stageName: "CustomOracle", passed: false, reason: `Oracle error: ${err.stderr?.toString().slice(0, 300) ?? err.message}`, runtimeMs: Date.now() - start }],
+				stages: [{ stageName: "CustomOracle", passed: false, reason: `Oracle error: ${errMsg}`, runtimeMs: Date.now() - start }],
 				finalMetrics: {},
 			};
 		} finally {
@@ -241,11 +401,20 @@ export async function detectOrGenerateDomain(problem: string): Promise<AutoDetec
 	console.log("[auto-detect] Classifying problem against registered domains…");
 	const { matched, confidence } = await classifyDomain(problem, registered);
 
-	if (matched && confidence >= 0.7) {
-		const existing = getDomainSpec(matched);
+	// Post-process: "math" domain is ONLY for formal proofs (Lean4/Coq).
+	// If the problem doesn't explicitly mention proof/theorem/formal/lean/coq, reject math.
+	const isFormalProof = /\b(proof|theorem|lean4?|coq|formal|prove|axiom|lemma)\b/i.test(problem);
+	let domain = matched;
+	if (domain === "math" && !isFormalProof) {
+		console.log(`[auto-detect] Override: problem doesn't ask for formal proof, rejecting "math"`);
+		domain = null;
+	}
+
+	if (domain && confidence >= 0.7) {
+		const existing = getDomainSpec(domain);
 		if (existing) {
-			console.log(`[auto-detect] Matched domain: "${matched}" (confidence=${confidence.toFixed(2)})`);
-			return { domain: matched, spec: existing, wasGenerated: false };
+			console.log(`[auto-detect] Matched domain: "${domain}" (confidence=${confidence.toFixed(2)})`);
+			return { domain: domain!, spec: existing, wasGenerated: false };
 		}
 	}
 

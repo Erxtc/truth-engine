@@ -84,9 +84,13 @@ export class KnowledgeGraph {
 			>
 		>
 	) {
+		const serialized: any = { ...updates };
+		if (serialized.payload !== undefined && serialized.payload !== null && typeof serialized.payload === "object") {
+			serialized.payload = JSON.stringify(serialized.payload);
+		}
 		await db
 			.updateTable("artifacts")
-			.set(updates as any)
+			.set(serialized)
 			.where("id", "=", id)
 			.execute();
 	}

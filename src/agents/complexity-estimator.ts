@@ -99,7 +99,7 @@ export async function estimateComplexity(
 	const prompt = buildPrompt(domain, problem);
 
 	try {
-		const result = await queryReasoning({ userPrompt: prompt, schema: assessmentSchema, temperature: 0.1 });
+		const result = await queryReasoning({ userPrompt: prompt, schema: assessmentSchema, temperature: 0.1, _role: 'complexity-estimator' });
 		const r = result.response;
 
 		const suggestedParams = scoreToParams(r.score, domainRequiredConfidence);

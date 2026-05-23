@@ -41,5 +41,14 @@ export function transpileToJs(source: string): string {
 export function valibotParse<T extends v.GenericSchema>(schema: T, input: unknown): v.InferOutput<T> {
 	const result = v.safeParse(schema, input);
 	if (result.success) return result.output;
-	throw new Error(`Valibot parse error: ${JSON.stringify(result.issues)}`);
+
+	// Clean, readable error — valibot issues blobs are huge
+	const issues = result.issues.map((issue: any) => {
+		const path = issue.path?.map((p: any) => p.key ?? p.item ?? p).join(".") || "<root>";
+		const msg = issue.message ?? "unknown error";
+		const expected = issue.expected ?? issue.type ?? "?";
+		const received = typeof issue.received === "string" ? issue.received.slice(0, 40) : typeof issue.received;
+		return `  ${path}: ${msg} (expected ${expected}, got ${String(received)})`;
+	});
+	throw new Error(`Valibot (${result.issues.length} issue${result.issues.length > 1 ? "s" : ""}):\n${issues.join("\n")}`);
 }

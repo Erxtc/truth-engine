@@ -3,6 +3,7 @@ import { buildSortingHarness } from "../sandbox/harness-builder";
 import type { PipelineResult } from "../../verification/types";
 import type { Proposal, WorkingContext } from "../../core/types";
 import { transpileToJs } from "../../utils/general";
+import { validateAndFixPython, validateAndFixJs, validateAndFixC } from "../../utils/code-validator";
 
 export async function runSortingPipeline(
 	proposal: Proposal,
@@ -15,6 +16,20 @@ export async function runSortingPipeline(
 	const { lang, source: rawSource } = proposal.executable;
 	if (lang !== "js" && lang !== "ts" && lang !== "python" && lang !== "c") {
 		return noExec(`Unsupported language for sorting: ${lang}`);
+	}
+
+	// Pre-execution syntax validation
+	if (lang === "python") {
+		const v = validateAndFixPython(rawSource.replace(/\\n/g, "\n").replace(/\\t/g, "\t"));
+		if (!v.ok) return noExec(v.error ?? "Python syntax error");
+		if (v.autoFixed) console.log("  [validator] Auto-fixed Python source before execution");
+	} else if (lang === "c") {
+		const v = validateAndFixC(rawSource);
+		if (!v.ok) return noExec(v.error ?? "C syntax error");
+	} else if (lang === "js" || lang === "ts") {
+		const src = lang === "js" ? transpileToJs(rawSource) : rawSource;
+		const v = validateAndFixJs(src);
+		if (!v.ok) return noExec(v.error ?? "JS syntax error");
 	}
 
 	// Downgrade TS → JS when lang="js" in case model slipped in type annotations

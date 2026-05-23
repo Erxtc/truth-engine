@@ -16,12 +16,14 @@ const DASHBOARD_HTML = /* html */`<!DOCTYPE html>
   --green: #3fb950; --red: #f85149; --yellow: #d29922;
   --blue: #58a6ff; --purple: #bc8cff; --orange: #ffa657;
   --cyan: #39d353; --pink: #ff7b72;
+  --think-bg: #100e00; --think-border: #3d3000; --think-text: #d4b84a;
+  --resp-bg: #070f1a; --resp-border: #1b3a5c; --resp-text: #79c0ff;
   font-size: 13px;
 }
 body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
 /* ── Header ─────────────────────────────────────────────────────────── */
-header { display: flex; align-items: center; gap: 8px; padding: 7px 14px; background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0; min-height: 0; }
+header { display: flex; align-items: center; gap: 8px; padding: 7px 14px; background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .logo { font-size: 14px; font-weight: 700; color: var(--blue); white-space: nowrap; letter-spacing: .3px; }
 .problem-pill { flex: 1; background: var(--bg3); border: 1px solid var(--border); border-radius: 5px; padding: 3px 10px; font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; transition: border-color .15s; }
 .problem-pill:hover { color: var(--text); border-color: var(--blue); }
@@ -30,7 +32,7 @@ header { display: flex; align-items: center; gap: 8px; padding: 7px 14px; backgr
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
 .badge.live::before { content: '●'; margin-right: 5px; animation: pulse 2s infinite; }
 
-/* ── Agent banner ────────────────────────────────────────────────────── */
+/* ── Agent bar ───────────────────────────────────────────────────────── */
 .agent-bar { padding: 4px 14px; background: var(--bg3); border-bottom: 1px solid var(--border); font-size: 11px; display: flex; align-items: center; gap: 8px; flex-shrink: 0; min-height: 26px; }
 .agent-label { color: var(--text3); text-transform: uppercase; letter-spacing: .5px; }
 .agent-name { font-weight: 600; }
@@ -38,8 +40,16 @@ header { display: flex; align-items: center; gap: 8px; padding: 7px 14px; backgr
 .spinner { width: 10px; height: 10px; border: 1.5px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0; }
 .spinner.off { display: none; }
 
+/* ── Direction bar (current step + active artifact) ──────────────────── */
+.direction-bar { padding: 5px 14px; background: #08111e; border-bottom: 1px solid var(--resp-border); font-size: 11px; display: none; align-items: center; gap: 10px; flex-shrink: 0; min-height: 28px; }
+.direction-bar.visible { display: flex; }
+.dir-step { color: var(--blue); font-weight: 700; white-space: nowrap; flex-shrink: 0; }
+.dir-sep { color: var(--text3); flex-shrink: 0; }
+.dir-goal { color: var(--text2); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dir-art { color: var(--text3); font-family: monospace; font-size: 10px; white-space: nowrap; background: var(--bg3); padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border); flex-shrink: 0; }
+
 /* ── Main grid ───────────────────────────────────────────────────────── */
-.main-grid { display: grid; grid-template-columns: 234px 1fr 370px; flex: 1; min-height: 0; overflow: hidden; }
+.main-grid { display: grid; grid-template-columns: 220px 1fr 360px; flex: 1; min-height: 0; overflow: hidden; }
 
 /* ── Shared panel pieces ─────────────────────────────────────────────── */
 .panel { display: flex; flex-direction: column; border-right: 1px solid var(--border); min-height: 0; }
@@ -72,52 +82,82 @@ header { display: flex; align-items: center; gap: 8px; padding: 7px 14px; backgr
 .step-oracle { font-size: 10px; color: var(--purple); margin-top: 2px; font-style: italic; }
 
 /* ── Center panel ────────────────────────────────────────────────────── */
-#event-list { display: flex; flex-direction: column; gap: 3px; }
+#event-list { display: flex; flex-direction: column; gap: 4px; }
 
-/* LLM call block */
+/* Filter tabs */
+.filter-tabs { display: flex; gap: 2px; margin-left: auto; }
+.ftab { font-size: 10px; padding: 2px 8px; border-radius: 4px; cursor: pointer; background: transparent; border: 1px solid transparent; color: var(--text3); letter-spacing: 0; font-weight: 600; transition: all .15s; text-transform: none; }
+.ftab:hover { color: var(--text2); border-color: var(--border); }
+.ftab.on { background: #0d1f33; border-color: var(--blue); color: var(--blue); }
+
+/* ── LLM call block ──────────────────────────────────────────────────── */
 .call-block { border: 1px solid var(--bg4); border-radius: 6px; background: var(--bg2); overflow: hidden; }
-.call-block.running { border-color: var(--blue); }
-.call-head { display: flex; align-items: center; gap: 7px; padding: 5px 10px; background: var(--bg3); border-bottom: 1px solid var(--border); }
+.call-block.running { border-color: var(--blue); box-shadow: 0 0 0 1px #58a6ff14; }
+
+.call-head { display: flex; align-items: center; gap: 7px; padding: 6px 10px; background: var(--bg3); border-bottom: 1px solid var(--border); }
 .call-role { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
 .call-role.reasoning { color: var(--blue); }
-.call-role.critic { color: var(--orange); }
-.call-role.llm { color: var(--purple); }
-.call-model { font-size: 9px; color: var(--text3); }
-.call-art { font-size: 10px; color: var(--text3); font-family: monospace; }
-.call-timing { margin-left: auto; font-size: 10px; color: var(--text2); display: flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; }
-.call-timing .done-ts { color: var(--text3); font-size: 9px; }
+.call-role.critic    { color: var(--orange); }
+.call-role.proposer  { color: var(--purple); }
+.call-role.repair    { color: var(--orange); }
+.call-role.judge     { color: var(--yellow); }
+.call-role.planner   { color: var(--cyan); }
+.call-role.llm       { color: var(--text2); }
+.call-model { font-size: 9px; color: var(--text3); max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.call-art { font-size: 9px; color: var(--text3); font-family: monospace; background: var(--bg); padding: 1px 5px; border-radius: 3px; }
+.call-timing { margin-left: auto; font-size: 10px; color: var(--text2); display: flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
-/* Thinking section */
-.think-section { border-bottom: 1px solid var(--border); }
-.think-section summary { list-style: none; cursor: pointer; padding: 4px 10px; font-size: 10px; color: var(--yellow); display: flex; align-items: center; gap: 5px; user-select: none; }
-.think-section summary:hover { background: var(--bg3); }
-.think-section summary::before { content: '▶'; font-size: 8px; margin-right: 3px; transition: transform .15s; }
-.think-section[open] summary::before { content: '▼'; }
-.think-text { padding: 8px 12px; font-family: 'Consolas', 'Fira Code', monospace; font-size: 11px; line-height: 1.65; color: var(--text2); white-space: pre-wrap; word-break: break-word; max-height: 280px; overflow-y: auto; background: var(--bg); font-style: italic; }
-.think-text::-webkit-scrollbar { width: 3px; }
-.think-text::-webkit-scrollbar-thumb { background: var(--bg4); }
+/* Prompt preview strip */
+.call-prompt { padding: 3px 10px 4px; font-size: 10px; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-bottom: 1px solid var(--border); font-style: italic; }
 
-/* Event rows */
-.ev { display: flex; align-items: center; gap: 7px; padding: 5px 8px; border-radius: 4px; border-left: 3px solid var(--border); background: var(--bg2); cursor: pointer; position: relative; }
+/* ── Thinking section (streaming, auto-open while running) ───────────── */
+.think-block { border-bottom: 1px solid var(--think-border); background: var(--think-bg); }
+.think-hdr { display: flex; align-items: center; gap: 6px; padding: 5px 10px; cursor: pointer; user-select: none; }
+.think-hdr:hover { background: rgba(255,220,100,.04); }
+.think-hdr-icon { font-size: 11px; }
+.think-hdr-label { font-size: 10px; font-weight: 700; color: var(--think-text); }
+.think-hdr-wc { font-size: 9px; color: var(--text3); font-variant-numeric: tabular-nums; }
+.think-hdr-hint { margin-left: auto; font-size: 9px; color: var(--text3); }
+.think-body { padding: 8px 12px 10px; font-family: 'Consolas', 'Fira Code', monospace; font-size: 11px; line-height: 1.7; color: #c4a84e; white-space: pre-wrap; word-break: break-word; max-height: 300px; overflow-y: auto; font-style: italic; background: #0c0900; }
+.think-body::-webkit-scrollbar { width: 3px; }
+.think-body::-webkit-scrollbar-thumb { background: #3d3000; }
+.think-block.collapsed .think-body { display: none; }
+
+/* ── Response section (auto-open after done) ─────────────────────────── */
+.resp-block { background: var(--resp-bg); }
+.resp-hdr { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-bottom: 1px solid var(--resp-border); cursor: pointer; user-select: none; }
+.resp-hdr:hover { background: rgba(88,166,255,.04); }
+.resp-hdr-icon { font-size: 11px; }
+.resp-hdr-label { font-size: 10px; font-weight: 700; color: var(--resp-text); }
+.resp-hdr-chars { font-size: 9px; color: var(--text3); font-variant-numeric: tabular-nums; }
+.resp-hdr-time { margin-left: auto; font-size: 9px; color: var(--text3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.resp-view-btn { font-size: 9px; color: var(--blue); background: none; border: 1px solid var(--resp-border); border-radius: 3px; padding: 1px 6px; cursor: pointer; flex-shrink: 0; transition: border-color .15s; }
+.resp-view-btn:hover { border-color: var(--blue); }
+.resp-body { padding: 10px 12px; font-family: 'Consolas', 'Fira Code', monospace; font-size: 11px; line-height: 1.75; color: #8dc8f8; white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow-y: auto; }
+.resp-body::-webkit-scrollbar { width: 3px; }
+.resp-body::-webkit-scrollbar-thumb { background: #1b3a5c; }
+.resp-block.collapsed .resp-body { display: none; }
+
+/* ── Event rows ──────────────────────────────────────────────────────── */
+.ev { display: flex; align-items: center; gap: 7px; padding: 5px 8px; border-radius: 4px; border-left: 3px solid var(--border); background: var(--bg2); cursor: pointer; }
 .ev:hover { background: var(--bg3); }
 .ev-icon { font-size: 12px; flex-shrink: 0; width: 16px; text-align: center; }
-.ev-type { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; width: 76px; flex-shrink: 0; }
+.ev-type { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; width: 72px; flex-shrink: 0; }
 .ev-msg { flex: 1; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .score-pill { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 8px; flex-shrink: 0; }
 .ev-ts { font-size: 10px; color: var(--text3); flex-shrink: 0; font-variant-numeric: tabular-nums; }
 .ev-detail { display: none; padding: 6px 10px; font-size: 11px; font-family: 'Consolas', monospace; color: var(--text2); background: var(--bg); white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow-y: auto; border-top: 1px solid var(--border); }
 .ev.open .ev-detail { display: block; }
 
-/* Event border colors */
 .ev[data-k="artifact:survived"] { border-left-color: var(--green); }
 .ev[data-k="artifact:killed"]   { border-left-color: var(--red); }
-.ev[data-k="verdict"]            { border-left-color: var(--yellow); }
-.ev[data-k="step:advanced"]      { border-left-color: var(--purple); }
+.ev[data-k="verdict"]           { border-left-color: var(--yellow); }
+.ev[data-k="step:advanced"]     { border-left-color: var(--purple); }
 .ev[data-k="repair:start"], .ev[data-k="repair:done"] { border-left-color: var(--orange); }
-.ev[data-k="planner:done"]       { border-left-color: var(--purple); }
-.ev[data-k="insight"]            { border-left-color: var(--cyan); }
+.ev[data-k="planner:done"]      { border-left-color: var(--purple); }
+.ev[data-k="insight"]           { border-left-color: var(--cyan); }
 
-/* Supervisor card */
+/* ── Supervisor card ─────────────────────────────────────────────────── */
 .sup-card { border-radius: 6px; background: var(--bg2); border: 1px solid var(--border); overflow: hidden; }
 .sup-card[data-act="escalate"] { border-color: var(--orange); }
 .sup-card[data-act="pivot"]    { border-color: var(--purple); }
@@ -128,17 +168,17 @@ header { display: flex; align-items: center; gap: 8px; padding: 7px 14px; backgr
 .sup-card[data-act="pivot"]    .sup-action { color: var(--purple); }
 .sup-card[data-act="abort"]    .sup-action { color: var(--red); }
 .sup-ts { font-size: 10px; color: var(--text3); margin-left: auto; }
-.sup-reason { padding: 5px 10px; font-size: 11px; color: var(--text2); line-height: 1.5; }
+.sup-reason { padding: 6px 10px; font-size: 11px; color: var(--text2); line-height: 1.55; }
 
-/* Solved banner */
-.solved-banner { border-radius: 6px; background: #0a1f12; border: 1px solid var(--green); padding: 12px 16px; text-align: center; }
-.solved-title { font-size: 15px; font-weight: 700; color: var(--green); margin-bottom: 4px; }
-.solved-msg { font-size: 11px; color: var(--text2); }
+/* ── Solved banner ───────────────────────────────────────────────────── */
+.solved-banner { border-radius: 6px; background: #0a1f12; border: 1px solid var(--green); padding: 14px 18px; text-align: center; }
+.solved-title { font-size: 16px; font-weight: 700; color: var(--green); margin-bottom: 5px; }
+.solved-msg { font-size: 12px; color: var(--text2); line-height: 1.6; white-space: pre-wrap; }
 
 /* ── Right panel ─────────────────────────────────────────────────────── */
 .right-panel { display: flex; flex-direction: column; overflow: hidden; }
 .art-section { flex: 1; min-height: 0; display: flex; flex-direction: column; border-bottom: 1px solid var(--border); }
-.inspect-section { height: 230px; flex-shrink: 0; display: flex; flex-direction: column; }
+.inspect-section { height: 310px; flex-shrink: 0; display: flex; flex-direction: column; }
 
 /* Artifact tree */
 .art-node { padding: 3px 6px; border-radius: 4px; margin-bottom: 2px; cursor: pointer; border: 1px solid transparent; }
@@ -159,32 +199,46 @@ header { display: flex; align-items: center; gap: 8px; padding: 7px 14px; backgr
 
 /* Inspect panel */
 .insp-empty { color: var(--text3); font-size: 11px; padding: 4px 2px; }
-.insp-row { margin-bottom: 7px; }
-.insp-key { font-size: 9px; text-transform: uppercase; letter-spacing: .5px; color: var(--text3); margin-bottom: 2px; }
-.insp-val { font-size: 11px; color: var(--text); line-height: 1.5; }
+.insp-row { margin-bottom: 8px; }
+.insp-key { font-size: 9px; text-transform: uppercase; letter-spacing: .5px; color: var(--text3); margin-bottom: 3px; }
+.insp-val { font-size: 11px; color: var(--text); line-height: 1.55; }
 .insp-val.mono { font-family: monospace; color: var(--text3); }
-.insp-code { font-family: 'Consolas', monospace; font-size: 10px; color: var(--cyan); background: var(--bg); padding: 6px 8px; border-radius: 4px; max-height: 90px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; margin-top: 2px; }
+.insp-hyp { font-size: 11px; color: var(--text2); line-height: 1.6; max-height: 90px; overflow-y: auto; }
+.insp-code { font-family: 'Consolas', monospace; font-size: 10px; color: var(--cyan); background: var(--bg); padding: 6px 8px; border-radius: 4px; max-height: 100px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; margin-top: 2px; }
 .conf-dots { display: flex; gap: 3px; margin-top: 2px; }
 .conf-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--bg3); border: 1px solid var(--border); }
 .conf-dot.on { background: var(--blue); border-color: var(--blue); }
 .conf-dot.on.hi { background: var(--green); border-color: var(--green); }
+.score-bar { display: flex; align-items: center; gap: 7px; }
+.score-bar-track { flex: 1; height: 5px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
+.score-bar-fill { height: 100%; border-radius: 3px; transition: width .4s; }
+.score-bar-num { font-size: 13px; font-weight: 700; min-width: 28px; text-align: right; font-variant-numeric: tabular-nums; }
 
 /* ── Misc ────────────────────────────────────────────────────────────── */
 #scroll-btn { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); background: var(--bg3); border: 1px solid var(--border); color: var(--text2); font-size: 11px; padding: 5px 14px; border-radius: 12px; cursor: pointer; display: none; z-index: 50; }
 #scroll-btn:hover { border-color: var(--blue); color: var(--blue); }
-.modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 100; align-items: center; justify-content: center; }
+
+/* ── Modals ──────────────────────────────────────────────────────────── */
+.modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 100; align-items: center; justify-content: center; }
 .modal-bg.open { display: flex; }
-.modal { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; max-width: 640px; width: 90vw; padding: 20px; max-height: 80vh; overflow-y: auto; }
-.modal-title { font-size: 13px; font-weight: 700; color: var(--blue); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
-.modal-close { background: none; border: none; color: var(--text2); font-size: 16px; cursor: pointer; }
-.modal-text { font-size: 12px; line-height: 1.75; color: var(--text); white-space: pre-wrap; }
+.modal { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; max-width: 720px; width: 92vw; max-height: 85vh; display: flex; flex-direction: column; }
+.modal-hdr { padding: 12px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.modal-ttl { font-size: 13px; font-weight: 700; color: var(--blue); }
+.modal-sub { font-size: 11px; color: var(--text3); }
+.modal-close { margin-left: auto; background: none; border: none; color: var(--text2); font-size: 16px; cursor: pointer; padding: 2px 6px; border-radius: 3px; }
+.modal-close:hover { background: var(--bg3); color: var(--text); }
+.modal-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
+.modal-body::-webkit-scrollbar { width: 5px; }
+.modal-body::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 2px; }
+.modal-prose { font-size: 12px; line-height: 1.8; color: var(--text); white-space: pre-wrap; word-break: break-word; }
+.modal-code { font-family: 'Consolas', 'Fira Code', monospace; font-size: 11px; line-height: 1.75; color: var(--text2); white-space: pre-wrap; word-break: break-word; }
 </style>
 </head>
 <body>
 
 <header>
   <span class="logo">⚙ truth-engine</span>
-  <div class="problem-pill" id="problem-pill" onclick="openModal()" title="Click for full text">Loading…</div>
+  <div class="problem-pill" id="problem-pill" onclick="openProblemModal()" title="Click for full text">Loading…</div>
   <span class="badge" id="domain-badge">—</span>
   <span class="badge" id="elapsed-badge">0:00</span>
   <span class="badge live" id="conn-badge">connecting…</span>
@@ -195,6 +249,13 @@ header { display: flex; align-items: center; gap: 8px; padding: 7px 14px; backgr
   <span class="agent-label">agent:</span>
   <span class="agent-name" id="agent-name" style="color:var(--text3)">idle</span>
   <span class="badge" id="budget-badge" style="margin-left:auto;display:none"></span>
+</div>
+
+<div class="direction-bar" id="direction-bar">
+  <span class="dir-step" id="dir-step">Step 0</span>
+  <span class="dir-sep">→</span>
+  <span class="dir-goal" id="dir-goal">Waiting for planner…</span>
+  <span class="dir-art" id="dir-art" style="display:none"></span>
 </div>
 
 <div class="main-grid">
@@ -232,6 +293,12 @@ header { display: flex; align-items: center; gap: 8px; padding: 7px 14px; backgr
     <div class="panel-head">
       Live Activity
       <span style="color:var(--text3);font-weight:400;text-transform:none;font-size:10px" id="ev-count">0 events</span>
+      <div class="filter-tabs">
+        <button class="ftab on"       onclick="setFilter('all',this)">All</button>
+        <button class="ftab"          onclick="setFilter('llm',this)">LLM</button>
+        <button class="ftab"          onclick="setFilter('system',this)">System</button>
+        <button class="ftab"          onclick="setFilter('artifacts',this)">Artifacts</button>
+      </div>
     </div>
     <div class="panel-body" id="center-scroll">
       <div id="event-list"></div>
@@ -259,13 +326,26 @@ header { display: flex; align-items: center; gap: 8px; padding: 7px 14px; backgr
 
 <button id="scroll-btn" onclick="resumeScroll()">▼ Resume scroll</button>
 
-<div class="modal-bg" id="modal" onclick="if(event.target===this)closeModal()">
+<!-- Problem modal -->
+<div class="modal-bg" id="modal-problem" onclick="if(event.target===this)closeProblemModal()">
   <div class="modal">
-    <div class="modal-title">
-      Problem Description
-      <button class="modal-close" onclick="closeModal()">✕</button>
+    <div class="modal-hdr">
+      <span class="modal-ttl">Problem Description</span>
+      <button class="modal-close" onclick="closeProblemModal()">✕</button>
     </div>
-    <div class="modal-text" id="modal-text">—</div>
+    <div class="modal-body"><div class="modal-prose" id="modal-problem-text">—</div></div>
+  </div>
+</div>
+
+<!-- Full response modal -->
+<div class="modal-bg" id="modal-resp" onclick="if(event.target===this)closeRespModal()">
+  <div class="modal">
+    <div class="modal-hdr">
+      <span class="modal-ttl" id="modal-resp-ttl">Response</span>
+      <span class="modal-sub" id="modal-resp-sub"></span>
+      <button class="modal-close" onclick="closeRespModal()">✕</button>
+    </div>
+    <div class="modal-body"><div class="modal-code" id="modal-resp-text">—</div></div>
   </div>
 </div>
 
@@ -300,16 +380,29 @@ const TYPE_LABEL = {
   'agent:run':'agent', 'problem:solved':'solved', 'info':'info'
 };
 
+// Which event kinds belong to each filter bucket
+const FILTER_KINDS = {
+  llm:       new Set(['llm:start','llm:thinking','llm:end']),
+  system:    new Set(['agent:run','step:advanced','planner:done','repair:start','repair:done','insight','info','problem:solved']),
+  artifacts: new Set(['artifact:born','artifact:survived','artifact:killed','verdict']),
+};
+
 // ── state ───────────────────────────────────────────────────────────────
 let evCount = 0, survived = 0, killed = 0, repairs = 0, llmCalls = 0, llmTotalMs = 0;
 let budgetTotal = 0;
 let autoScroll = true;
 let problemText = '';
+let currentFilter = 'all';
+let currentStepPlan = null;
+let currentStepIdx = 0;
 const centerScroll = el('center-scroll');
 let startTime = Date.now();
 
-// Open LLM call blocks stack (supports up to 2 concurrent calls via semaphore)
-const openCallStack = []; // { blockEl, startId }
+// Stack of open LLM call entries: { blockEl, bodyEl, startId, role, model, thinkBlock, thinkBodyEl, thinkWcEl, fullResp }
+const openCallStack = [];
+
+// Full response store: key → { role, model, text }
+const respStore = {};
 
 // ── elapsed timer ───────────────────────────────────────────────────────
 setInterval(() => {
@@ -330,9 +423,46 @@ function resumeScroll() {
 }
 function scroll() { if (autoScroll) centerScroll.scrollTop = centerScroll.scrollHeight; }
 
-// ── modal ───────────────────────────────────────────────────────────────
-function openModal() { el('modal-text').textContent = problemText || '—'; el('modal').classList.add('open'); }
-function closeModal() { el('modal').classList.remove('open'); }
+// ── modals ──────────────────────────────────────────────────────────────
+function openProblemModal() { el('modal-problem-text').textContent = problemText || '—'; el('modal-problem').classList.add('open'); }
+function closeProblemModal() { el('modal-problem').classList.remove('open'); }
+function openRespModal(ttl, sub, text) {
+  el('modal-resp-ttl').textContent = ttl;
+  el('modal-resp-sub').textContent = sub;
+  el('modal-resp-text').textContent = text;
+  el('modal-resp').classList.add('open');
+}
+function closeRespModal() { el('modal-resp').classList.remove('open'); }
+function showResp(key) {
+  const d = respStore[key];
+  if (!d) return;
+  openRespModal(d.role.toUpperCase() + ' Response', d.model, d.text);
+}
+
+// ── filter ──────────────────────────────────────────────────────────────
+function setFilter(f, btn) {
+  currentFilter = f;
+  document.querySelectorAll('.ftab').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  for (const item of el('event-list').children) applyVis(item);
+}
+function applyVis(item) {
+  if (currentFilter === 'all') { item.style.display = ''; return; }
+  const k = item.dataset.fk ?? '';
+  item.style.display = (FILTER_KINDS[currentFilter]?.has(k) ?? false) ? '' : 'none';
+}
+
+// ── direction bar ────────────────────────────────────────────────────────
+function updateDirection(artId) {
+  const bar = el('direction-bar');
+  const steps = currentStepPlan?.steps;
+  if (!steps?.length) return;
+  bar.classList.add('visible');
+  el('dir-step').textContent = \`Step \${currentStepIdx + 1} / \${steps.length}\`;
+  el('dir-goal').textContent = steps[currentStepIdx]?.goal ?? '…';
+  const dartEl = el('dir-art');
+  if (artId) { dartEl.textContent = artId.slice(0, 12) + '…'; dartEl.style.display = ''; }
+}
 
 // ── agent banner ────────────────────────────────────────────────────────
 function setAgent(name, running) {
@@ -368,6 +498,7 @@ function addEvent(e) {
     el('s-llm').textContent = llmCalls;
     updateBudget();
     setAgent((e.detail?.role ?? 'llm').toUpperCase(), true);
+    updateDirection(e.artifactId);
   }
   if (e.kind === 'llm:end' && e.ms) {
     llmTotalMs += e.ms;
@@ -375,93 +506,160 @@ function addEvent(e) {
   }
   if (e.kind === 'agent:run') setAgent(e.msg, true);
   if (e.kind === 'problem:solved') setAgent('SOLVED ✓', false);
+  if (e.kind === 'step:advanced') {
+    const m = e.msg.match(/(\\d+)/);
+    if (m) { currentStepIdx = Math.max(0, parseInt(m[1]) - 1); updateDirection(); }
+  }
 
   const list = el('event-list');
 
-  // ── LLM call block grouping ──
+  // ── LLM call blocks ──
   if (e.kind === 'llm:start') {
-    const block = buildCallBlock(e);
-    openCallStack.push({ blockEl: block, startId: e.id });
-    list.appendChild(block);
+    const entry = buildCallBlock(e);
+    openCallStack.push(entry);
+    list.appendChild(entry.blockEl);
+    applyVis(entry.blockEl);
     scroll();
     return;
   }
   if (e.kind === 'llm:thinking') {
     const top = openCallStack[openCallStack.length - 1];
-    if (top) appendThinking(top.blockEl, e);
+    if (top) appendThinking(top, e);
     scroll();
     return;
   }
   if (e.kind === 'llm:end') {
     const top = openCallStack.pop();
-    if (top) finaliseBlock(top.blockEl, e);
+    if (top) finaliseBlock(top, e);
     if (openCallStack.length === 0) setAgent('idle', false);
     scroll();
     return;
   }
 
-  // ── Supervisor decisions (emitted as info events) ──
+  // ── Supervisor decisions ──
   const supMatch = e.kind === 'info' && e.msg.match(/^supervisor: (escalate|pivot|abort) — (.*)/);
   if (supMatch) {
-    list.appendChild(buildSupCard(supMatch[1], supMatch[2], e.ts));
+    const card = buildSupCard(supMatch[1], supMatch[2], e.ts);
+    card.dataset.fk = 'info';
+    list.appendChild(card);
+    applyVis(card);
     scroll();
     return;
   }
 
   // ── Solved banner ──
   if (e.kind === 'problem:solved') {
-    list.appendChild(buildSolvedBanner(e));
+    const banner = buildSolvedBanner(e);
+    banner.dataset.fk = 'problem:solved';
+    list.appendChild(banner);
+    applyVis(banner);
     scroll();
     return;
   }
 
   // ── Default row ──
-  list.appendChild(buildEvRow(e));
+  const row = buildEvRow(e);
+  list.appendChild(row);
+  applyVis(row);
   scroll();
 }
 
 // ── call block ──────────────────────────────────────────────────────────
 function buildCallBlock(startEv) {
-  const role  = startEv.detail?.role  ?? 'llm';
-  const model = startEv.detail?.model ?? '';
-  const artId = startEv.artifactId;
+  const role   = startEv.detail?.role   ?? 'llm';
+  const model  = startEv.detail?.model  ?? '';
+  const prompt = startEv.detail?.prompt ?? startEv.msg ?? '';
+  const artId  = startEv.artifactId ?? '';
+
   const div = document.createElement('div');
   div.className = 'call-block running';
+  div.dataset.fk = 'llm:start';
   div.innerHTML = \`
     <div class="call-head">
       <span class="call-role \${esc(role)}">\${esc(role.toUpperCase())}</span>
-      \${model ? \`<span class="call-model">\${esc(model.slice(0,28))}</span>\` : ''}
-      \${artId  ? \`<span class="call-art">\${esc(artId.slice(0,8))}</span>\` : ''}
+      \${model ? \`<span class="call-model">\${esc(model.slice(0, 34))}</span>\` : ''}
+      \${artId  ? \`<span class="call-art">\${esc(artId.slice(0, 10))}</span>\` : ''}
       <span class="call-timing" id="ctiming-\${startEv.id}">
         <span class="spinner" style="width:8px;height:8px;border-width:1.5px"></span>
         running…
       </span>
     </div>
+    \${prompt ? \`<div class="call-prompt">\${esc(prompt.slice(0, 140))}</div>\` : ''}
     <div id="cbody-\${startEv.id}"></div>
   \`;
-  return div;
+
+  const bodyEl = div.querySelector(\`#cbody-\${startEv.id}\`);
+  return { blockEl: div, bodyEl, startId: startEv.id, role, model, thinkBlock: null, thinkBodyEl: null, thinkWcEl: null, fullResp: '' };
 }
 
-function appendThinking(blockEl, thinkEv) {
-  const body = blockEl.querySelector('[id^="cbody-"]');
-  if (!body) return;
-  const thinking = thinkEv.detail?.thinking ?? thinkEv.msg;
-  const words = thinking.split(/\\s+/).length;
-  const det = document.createElement('details');
-  det.className = 'think-section';
-  det.innerHTML = \`
-    <summary>💭 Thinking <span style="color:var(--text3);margin-left:4px">\${words} words</span></summary>
-    <pre class="think-text">\${esc(thinking)}</pre>
-  \`;
-  body.appendChild(det);
-}
+// Append thinking text — accumulates across multiple llm:thinking events
+function appendThinking(entry, thinkEv) {
+  const text = String(thinkEv.detail?.thinking ?? thinkEv.msg ?? '');
+  if (!text && !entry.thinkBlock) return;
 
-function finaliseBlock(blockEl, endEv) {
-  blockEl.classList.remove('running');
-  const timingEl = blockEl.querySelector('[id^="ctiming-"]');
-  if (timingEl) {
-    timingEl.innerHTML = \`\${fmtMs(endEv.ms)} <span class="done-ts">\${ts(endEv.ts)}</span>\`;
+  if (!entry.thinkBlock) {
+    const block = document.createElement('div');
+    block.className = 'think-block';
+    block.innerHTML = \`
+      <div class="think-hdr" onclick="this.closest('.think-block').classList.toggle('collapsed');this.querySelector('.think-hdr-hint').textContent=this.closest('.think-block').classList.contains('collapsed')?'expand':'collapse'">
+        <span class="think-hdr-icon">💭</span>
+        <span class="think-hdr-label">Thinking</span>
+        <span class="think-hdr-wc">0 words</span>
+        <span class="think-hdr-hint">collapse</span>
+      </div>
+      <pre class="think-body"></pre>
+    \`;
+    entry.bodyEl.appendChild(block);
+    entry.thinkBlock  = block;
+    entry.thinkBodyEl = block.querySelector('.think-body');
+    entry.thinkWcEl   = block.querySelector('.think-hdr-wc');
   }
+
+  if (text) {
+    entry.thinkBodyEl.textContent += text;
+    entry.thinkBodyEl.scrollTop = entry.thinkBodyEl.scrollHeight;
+    const words = entry.thinkBodyEl.textContent.trim().split(/\\s+/).filter(Boolean).length;
+    entry.thinkWcEl.textContent = words.toLocaleString() + ' words';
+  }
+}
+
+// Collapse thinking, show response (expanded by default)
+function finaliseBlock(entry, endEv) {
+  entry.blockEl.classList.remove('running');
+
+  // Collapse thinking and update hint text
+  if (entry.thinkBlock) {
+    entry.thinkBlock.classList.add('collapsed');
+    const hint = entry.thinkBlock.querySelector('.think-hdr-hint');
+    if (hint) hint.textContent = 'expand';
+  }
+
+  // Update timing
+  const timingEl = entry.blockEl.querySelector('[id^="ctiming-"]');
+  if (timingEl) timingEl.innerHTML = \`\${fmtMs(endEv.ms)} <span style="font-size:9px;color:var(--text3)">\${ts(endEv.ts)}</span>\`;
+
+  // Response section (auto-expanded)
+  const preview = String(endEv.detail?.responsePreview ?? '');
+  if (!preview) return;
+
+  entry.fullResp = preview;
+  const key = 'r' + entry.startId;
+  respStore[key] = { role: entry.role, model: entry.model, text: preview };
+
+  const chars = preview.length;
+  const resp = document.createElement('div');
+  resp.className = 'resp-block';
+  resp.innerHTML = \`
+    <div class="resp-hdr" onclick="this.closest('.resp-block').classList.toggle('collapsed');this.querySelector('.resp-view-btn').textContent=this.closest('.resp-block').classList.contains('collapsed')?'Show ↓':'View full ↗'">
+      <span class="resp-hdr-icon">📤</span>
+      <span class="resp-hdr-label">Response</span>
+      <span class="resp-hdr-chars">\${chars.toLocaleString()} chars\${chars >= 3990 ? ' (truncated)' : ''}</span>
+      <span class="resp-hdr-time">\${fmtMs(endEv.ms)}</span>
+      <button class="resp-view-btn" onclick="event.stopPropagation();showResp('\${key}')">View full ↗</button>
+    </div>
+    <pre class="resp-body">\${esc(preview)}</pre>
+  \`;
+  entry.bodyEl.appendChild(resp);
 }
 
 // ── supervisor card ──────────────────────────────────────────────────────
@@ -492,7 +690,8 @@ function buildSolvedBanner(e) {
 function buildEvRow(e) {
   const div = document.createElement('div');
   div.className = 'ev';
-  div.dataset.k = e.kind;
+  div.dataset.k  = e.kind;
+  div.dataset.fk = e.kind;
 
   let scorePill = '';
   if (e.kind === 'verdict') {
@@ -549,7 +748,12 @@ async function pollState() {
       el('cfg-conf').textContent     = s.runParams.requiredConfidence ?? '—';
       if (s.runParams.budgetLlmCalls) { budgetTotal = s.runParams.budgetLlmCalls; updateBudget(); }
     }
-    if (s.stepPlan) renderStepPlan(s.stepPlan, s.currentStep ?? 0);
+    if (s.stepPlan) {
+      currentStepPlan = s.stepPlan;
+      currentStepIdx  = s.currentStep ?? 0;
+      renderStepPlan(s.stepPlan, currentStepIdx);
+      updateDirection();
+    }
   } catch {}
 }
 
@@ -639,19 +843,30 @@ function showInspect(a) {
     \`<div class="conf-dot \${i < (a.confidenceLevel ?? 0) ? 'on' + (i >= 2 ? ' hi' : '') : ''}"></div>\`
   ).join('');
 
+  const sc = a.score ?? 0;
+  const scColor = sc >= 80 ? 'var(--green)' : sc >= 60 ? 'var(--blue)' : 'var(--text3)';
+
   body.innerHTML = \`
-    <div class="insp-row"><div class="insp-key">ID</div><div class="insp-val mono">\${esc(a.id.slice(0, 16))}…</div></div>
-    <div class="insp-row"><div class="insp-key">Type · Status</div><div class="insp-val">\${esc(a.type)} · \${esc(a.status)}\${a.score ? ' · score ' + a.score : ''}</div></div>
+    <div class="insp-row"><div class="insp-key">ID</div><div class="insp-val mono">\${esc(a.id.slice(0, 18))}…</div></div>
+    <div class="insp-row"><div class="insp-key">Type · Status</div><div class="insp-val">\${esc(a.type)} · \${esc(a.status)}</div></div>
+    \${sc ? \`
+    <div class="insp-row">
+      <div class="insp-key">Score</div>
+      <div class="score-bar">
+        <div class="score-bar-track"><div class="score-bar-fill" style="width:\${sc}%;background:\${scColor}"></div></div>
+        <div class="score-bar-num" style="color:\${scColor}">\${sc}</div>
+      </div>
+    </div>\` : ''}
     <div class="insp-row"><div class="insp-key">Confidence</div><div class="conf-dots">\${dots}</div></div>
     \${a.hypothesisText ? \`
     <div class="insp-row">
       <div class="insp-key">Hypothesis</div>
-      <div class="insp-val">\${esc(a.hypothesisText.slice(0, 260))}\${a.hypothesisText.length > 260 ? '…' : ''}</div>
+      <div class="insp-hyp">\${esc(a.hypothesisText)}</div>
     </div>\` : ''}
     \${a.sourceCode ? \`
     <div class="insp-row">
       <div class="insp-key">Source</div>
-      <div class="insp-code">\${esc(a.sourceCode.slice(0, 600))}</div>
+      <div class="insp-code">\${esc(a.sourceCode.slice(0, 800))}</div>
     </div>\` : ''}
   \`;
 }

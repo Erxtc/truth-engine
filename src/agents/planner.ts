@@ -25,6 +25,11 @@ const DOMAIN_ORACLES: Record<string, OracleHint[]> = {
 	c:           ["unit_tests", "property_fuzz", "benchmark"],
 };
 
+// For domains not in DOMAIN_ORACLES (e.g. auto-generated custom domains),
+// only suggest oracles that make sense for a code-verification pipeline.
+// Never suggest lean4_proof or qutip_sim for non-math/non-physics domains.
+const CODE_ORACLES: OracleHint[] = ["unit_tests", "code_review"];
+
 const planStepSchema = v.object({
 	index: v.pipe(v.number(), v.integer(), v.minValue(0)),
 	goal: v.string(),
@@ -34,46 +39,51 @@ const planStepSchema = v.object({
 });
 
 const stepPlanSchema = v.object({
-	steps: v.pipe(v.array(planStepSchema), v.minLength(2), v.maxLength(7)),
+	steps: v.pipe(v.array(planStepSchema), v.minLength(1), v.maxLength(7)),
 	rationale: v.string(),
 });
 
 export async function runPlanner(
 	domain: string,
 	problem: string,
-	invariants: string[]
+	invariants: string[],
+	complexityScore?: number,
 ): Promise<StepPlan> {
-	const prompt = buildPrompt(domain, problem, invariants);
-	const result = await queryReasoning({ userPrompt: prompt, schema: stepPlanSchema, temperature: 0.1 });
+	const prompt = buildPrompt(domain, problem, invariants, complexityScore);
+	const result = await queryReasoning({ userPrompt: prompt, schema: stepPlanSchema, temperature: 0.1, _role: 'planner' });
 	return result.response;
 }
 
-function buildPrompt(domain: string, problem: string, invariants: string[]): string {
-	const available = (DOMAIN_ORACLES[domain] ?? ALL_ORACLES).join(", ");
+function buildPrompt(domain: string, problem: string, invariants: string[], complexityScore?: number): string {
+	const available = (DOMAIN_ORACLES[domain] ?? CODE_ORACLES).join(", ");
 
 	const invariantBlock = invariants.length
 		? `Domain invariants (every step must preserve these):\n${invariants.map(i => `  - ${i}`).join("\n")}`
 		: "";
 
+	const scaleGuide = complexityScore !== undefined
+		? `Problem complexity: ${complexityScore}/10.\n${complexityScore <= 2 ? "This is a TRIVIAL problem. Use 1 step, maybe 2. A single function returning the answer IS the complete solution." : complexityScore <= 5 ? "This is a MODERATE problem. Use 2-4 steps." : "This is a COMPLEX problem. Use 4-7 steps with genuine dependencies."}`
+		: "";
+
 	return `
-You are a research planning agent. Decompose the following problem into a concrete, ordered sequence of verifiable steps.
+You are a step planner. Break the problem into the MINIMUM number of verifiable steps needed.
 
 Domain: ${domain}
-Available verification oracles: ${available}
+Available oracles: ${available}
 
 Problem:
 ${problem}
 
 ${invariantBlock}
+${scaleGuide}
 
-Rules:
-- Generate between 2 and 7 steps, ordered by dependency.
-- Each step must have a CONCRETE success_criteria that the oracle can objectively verify.
+CRITICAL RULES:
+- Use the FEWEST steps that actually make sense. More steps ≠ better plan.
+- For trivial problems (simple computation, direct answer), 1 step is correct: "implement and verify".
+- ONLY add steps when there is a GENUINE dependency — step B truly cannot start before step A finishes.
+- Do NOT generate busywork steps (benchmark, review, formal proof) unless the problem explicitly demands them.
 - oracle_hint must be one of: ${available}
-- depends_on lists indices of steps that must complete before this one starts.
-- Steps must build on each other — each step creates foundations the next step requires.
-- Do not generate a step whose success cannot be verified by the available oracles.
-- Steps should progress from "establish foundations" → "build solution" → "validate and harden".
+- depends_on lists indices of prerequisite steps.
 
 Return ONLY valid JSON:
 {
@@ -86,7 +96,7 @@ Return ONLY valid JSON:
       "depends_on": []
     }
   ],
-  "rationale": "Brief explanation of why this decomposition makes sense for the problem."
+  "rationale": "Brief."
 }
 `.trim();
 }

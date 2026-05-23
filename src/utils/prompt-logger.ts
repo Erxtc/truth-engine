@@ -1,7 +1,6 @@
 /**
  * Logs every LLM prompt + response to a timestamped file.
- * Enable with: LOG_PROMPTS=true bun run src/main.ts ...
- * Or: --log-prompts flag (sets the env var).
+ * Always on by default. Disable with --quiet or LOG_PROMPTS=false.
  *
  * Each call gets a numbered block showing:
  *   - which agent triggered it (role)
@@ -18,18 +17,19 @@ import * as path from "path";
 let logPath: string | null = null;
 let callCounter = 0;
 const startTime = new Date();
+export let quietMode = false;
+export function setQuietMode(q: boolean) { quietMode = q; }
 
 function getLogPath(): string | null {
-    if (!process.env.LOG_PROMPTS) return null;
+    if (process.env.LOG_PROMPTS === "false") return null;
     if (!logPath) {
         const ts = startTime.toISOString().replace(/[:.]/g, "-").slice(0, 19);
         logPath = path.join(process.cwd(), `truth-engine-${ts}.log`);
-        // Write header
         fs.writeFileSync(logPath,
             `Truth Engine Prompt Log\nStarted: ${startTime.toISOString()}\nPID: ${process.pid}\n` +
             `${"═".repeat(70)}\n\n`
         );
-        console.log(`[prompt-logger] Writing to: ${logPath}`);
+        if (!quietMode) console.log(`[log] ${logPath}`);
     }
     return logPath;
 }
@@ -90,7 +90,7 @@ export function logLlmResult(callNum: number, result: LlmResultLog) {
         // Show <think> block separately so reasoning is visible
         const thinkMatch = result.rawContent.match(/<think>([\s\S]*?)<\/think>/i);
         if (thinkMatch) {
-            block += `<think> REASONING:\n${thinkMatch[1].trim()}\n</think>\n\n`;
+            block += `<think> REASONING:\n${thinkMatch[1]!.trim()}\n</think>\n\n`;
         }
         block += `JSON OUTPUT:\n${result.rawContentStripped}\n\n`;
     } else {

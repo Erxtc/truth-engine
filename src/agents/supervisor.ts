@@ -65,15 +65,16 @@ CHOOSE ONE ACTION:
   "continue"  — scores are improving; let the evolution run unchanged
   "escalate"  — try more branches or critics; set new_branches / new_critics / new_depth > 0
   "pivot"     — the current approach direction is fundamentally wrong; provide direction_hint
-                (a short constraint like "use a non-comparison sort" or "rewrite in pure math")
+	                based on the observed failure pattern (e.g. "fix the matrix solver implementation",
+	                "switch to Python for numerical computation")
   "abort"     — problem appears unsolvable with available resources
 
-GUIDELINES:
-- Prefer "continue" if there has been any improvement or fewer than 3 total attempts
-- Prefer "escalate" when close (best_score > 50) but stuck
-- Prefer "pivot" when stuck with low scores AND a clear repeated failure pattern
-- Use "abort" only if best_score = 0 and >10 attempts with no improvement at all
-- For escalate: new_branches should not exceed current×2; new_critics not exceed 4
+GUIDELINES (use the HEALTH REPORT data above to decide):
+- "continue"  -> improvement rate > 0% AND pass rate > 0% (something is working)
+- "escalate"  -> best_score >= 50 but pass rate is 0% (close, try harder)
+- "pivot"     -> total attempts >= 3 AND pass rate = 0% AND a failure pattern exists
+- "abort"     -> total attempts >= 8 AND best_score = 0 AND pass rate = 0% (unsolvable)
+- Use the actual HEALTH REPORT numbers. Do not ignore the data.
 
 Return ONLY valid JSON:
 {
@@ -98,7 +99,7 @@ export async function runSupervisor(
 	const prompt = buildPrompt(domain, problem, health, currentParams);
 
 	try {
-		const result = await queryReasoning({ userPrompt: prompt, schema: supervisorSchema, temperature: 0.2 });
+		const result = await queryReasoning({ userPrompt: prompt, schema: supervisorSchema, temperature: 0.2, _role: 'supervisor' });
 		const r = result.response;
 		return {
 			action:       r.action,

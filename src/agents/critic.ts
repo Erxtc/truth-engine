@@ -32,108 +32,55 @@ export async function runCritic(ctx: WorkingContext, proposal: Proposal): Promis
 		const result = await queryCritic({ userPrompt: prompt, schema: critiqueListSchema, temperature: 0.3 });
 		return result.response.critiques;
 	} catch (err) {
-		console.warn(`  [critic] parse failed, treating as no critiques:`, (err as Error).message?.slice(0, 120));
+		console.warn(`  [critic] parse failed:`, (err as Error).message?.slice(0, 120));
 		return [];
 	}
 }
 
 function buildPrompt(ctx: WorkingContext, proposal: Proposal): string {
-	const stepBlock = ctx.current_step
-		? `\nSTEP BEING TARGETED: ${ctx.current_step.goal}\nSuccess criteria: ${ctx.current_step.success_criteria}`
-		: "";
-
-	const constraintsBlock = ctx.active_constraints.length
-		? `\nACTIVE CONSTRAINTS (check for violations):\n${ctx.active_constraints.map(c => `  - ${c}`).join("\n")}`
-		: "";
-
-	const insightBlock = ctx.recent_insights.length
-		? `\nPAST FAILURE PATTERNS (look for these recurring mistakes):\n${ctx.recent_insights.slice(0, 3).map(i => `  - ${i}`).join("\n")}`
-		: "";
-
 	const exe = proposal.executable;
-	const executableSummary = exe.type === "code"
+	const executableBlock = exe.type === "code"
 		? `\nCODE:\n\`\`\`${exe.lang}\n${exe.source}\n\`\`\``
 		: exe.type === "proof"
 			? `\nPROOF (${exe.system}):\n${exe.source}`
 			: exe.type === "sim"
-				? `\nSIMULATION CONFIG:\n${JSON.stringify(exe.config, null, 2)}`
+				? `\nSIM CONFIG:\n${JSON.stringify(exe.config)}`
 				: `\nPROJECT FILES: ${Object.keys(exe.files).join(", ")}`;
 
+	const invariantsBlock = ctx.active_invariants.length
+		? `\nINVARIANTS (violation = fatal):\n${ctx.active_invariants.map(i => `  - ${i}`).join("\n")}`
+		: "";
+
 	return `
-You are an adversarial critic. Your job is to find real flaws that would cause this proposal to fail in practice.
+You are a code reviewer. Your ONLY job: determine if this code produces the correct answer for the stated problem.
+
 Domain: ${ctx.domain}
-${stepBlock}
+Problem: ${ctx.problem.slice(0, 400)}${invariantsBlock}
 
-DOMAIN INVARIANTS (violations are always fatal):
-${ctx.active_invariants.map(i => `  - ${i}`).join("\n")}
-${constraintsBlock}
-${insightBlock}
+PROPOSAL: ${proposal.hypothesis}${executableBlock}
 
-PROPOSAL TO ATTACK:
-  hypothesis: ${proposal.hypothesis}
-  expected_benefit: ${proposal.expected_benefit}
-  assumptions: ${proposal.assumptions.join("; ")}
-  claimed failure modes: ${proposal.possible_failure_modes.map(f => `${f.condition}: ${f.issue}`).join("; ")}
-${executableSummary}
+STEP 1 — Is the code CORRECT for this exact problem?
+  - Does it produce the right output?
+  - For a function with NO INPUTS: returning the correct answer IS the solution.
+    You do NOT need a general solver. A hardcoded correct answer = correct function.
+  - If the answer is correct → return { "critiques": [] } and STOP. You are DONE.
 
-ATTACK ANGLES — check each of these systematically:
+STEP 2 — Only if you found a REAL bug, not a style complaint:
+  REAL issues: wrong answer, infinite loop, crashes on valid input, violates a stated invariant.
+  NOT issues (ignore completely):
+	    - Missing comments, documentation, or JSDoc
+	    - No error handling (for functions that can't error)
+	    - No input validation (when there are no inputs, or for trivial functions)
+	    - "Not extensible" or "not reusable" or "no tests"
+	    - Any complaint about code STYLE rather than code CORRECTNESS
 
-1. LOGIC (attack_type: "logic")
-   - Is the core algorithm or proof strategy correct?
-   - Does the expected_benefit actually follow from the approach?
-   - Are there logical gaps between the hypothesis and the implementation?
+	If the code is correct, critiques MUST be empty. A function that returns 15*17=255 for "what is 15 times 17" is CORRECT — no critiques needed.
 
-2. ASSUMPTIONS (attack_type: "assumption")
-   - Which assumptions are unjustified or will not hold in practice?
-   - What happens when assumptions are violated?
-   - Does the code/proof silently depend on inputs being pre-sorted, non-null, etc.?
+	OUTPUT EXAMPLES:
 
-3. EDGE CASES (attack_type: "edge_case")
-   - Empty input, single element, all identical elements, max/min values
-   - Off-by-one errors, boundary conditions
-   - Inputs the author probably didn't test
+	For CORRECT code: { "critiques": [] }
 
-4. COUNTEREXAMPLES (attack_type: "counterexample")
-   - Construct a specific input that causes wrong output, crash, or invariant violation
-   - For proofs: find a case where the theorem statement could be false
+	For BUGGY code: { "critiques": [{"attack_type": "logic", "description": "Returns 16*17 instead of 15*17", "severity": "fatal", "repairable": true}] }
 
-5. COMPLEXITY (attack_type: "complexity")
-   - Worst-case time/space complexity — is it acceptable for the domain?
-   - Hidden O(n²) inner loops, excessive allocations, stack overflow on large inputs
-
-SEVERITY CALIBRATION:
-  fatal   → the proposal fundamentally cannot work as stated, or violates an invariant/constraint.
-            Use for: incorrect algorithm, violated domain invariant, proven counterexample, non-termination.
-            Mark repairable=false if the entire approach is wrong.
-            Mark repairable=true if a targeted fix (not a rewrite) would solve it.
-  major   → serious flaw that would cause failures on realistic inputs, but the core idea survives.
-  minor   → cosmetic, rare edge case, or low-impact inefficiency.
-
-RULES:
-- If you find no real flaws, return an empty critiques array — do NOT invent issues.
-- Be specific: "this fails when arr=[1,1,1]" is better than "may fail on duplicates".
-- Each critique must be a distinct, independent flaw — no duplicates.
-- Maximum 5 critiques total.
-
-EXAMPLE of correct JSON shape (follow the field names exactly):
-{
-  "critiques": [
-    {
-      "attack_type": "edge_case",
-      "description": "Fails on empty array — the while loop accesses arr[0] before checking length",
-      "severity": "fatal",
-      "counterexample": "proposedSort([]) throws TypeError",
-      "repairable": true
-    },
-    {
-      "attack_type": "complexity",
-      "description": "Inner loop is O(n²) for partially-sorted inputs due to insertion fallback",
-      "severity": "major",
-      "repairable": true
-    }
-  ]
-}
-
-Return ONLY valid JSON: { "critiques": [...] }
-`.trim();
+	Return ONLY: { "critiques": [...] }`.trim();
 }

@@ -78,8 +78,18 @@ function runPipeline(problem: TestProblem): { passed: boolean; calls: number; to
     );
     const duration = Date.now() - t0;
 
-    // Parse output for success markers
-    const solved = /✓ SOLVED|PROBLEM SOLVED|FINAL ANSWER/i.test(output);
+    // Parse structured result from output (preferred) or fall back to regex
+    let passed = false;
+    const resultMatch = output.match(/\{"result":\{[^}]+\}\}/);
+    if (resultMatch) {
+      try {
+        const parsed = JSON.parse(resultMatch[0]);
+        passed = parsed.result?.solved === true;
+      } catch { /* fall through to regex */ }
+    }
+    if (!passed && !resultMatch) {
+      passed = /✓ SOLVED|PROBLEM SOLVED|FINAL ANSWER/i.test(output);
+    }
 
     // Parse calls/tokens/cost from the latest log
     const log = lastLogPath();
@@ -87,7 +97,7 @@ function runPipeline(problem: TestProblem): { passed: boolean; calls: number; to
     const tokens = log ? totalTokens(log) : 0;
     const cost = log ? totalCost(log) : 0;
 
-    return { passed: solved, calls, tokens, cost, durationMs: duration };
+    return { passed, calls, tokens, cost, durationMs: duration };
   } catch (err: any) {
     // Timeout or crash — still count what we have
     const log = lastLogPath();

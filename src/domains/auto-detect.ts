@@ -117,7 +117,69 @@ export async function detectOrGenerateDomain(problem: string): Promise<AutoDetec
 		return { domain: cached.domain_name, spec: cachedSpec, wasGenerated: true };
 	}
 
-	console.log("[auto-detect] Classifying problem against registered domains…");
+	// ── Keyword pre-check (deterministic, free) ─────────────────────────
+	// Registered domains with built-in verification are detected purely by
+	// keyword matching, avoiding an LLM call. This is deterministic and saves
+	// ~700 tokens per run for the most common domains.
+	const probLower = problem.toLowerCase();
+
+	// Sorting
+	if (
+		/\b(merge\s*sort|quicksort|bubble\s*sort|insertion\s*sort|selection\s*sort|heap\s*sort|radix\s*sort|shell\s*sort|sorting\s+algorithm|implement\b[^.!?]*\bsorts?\b.*sort|write\b[^.!?]*\bmerge\s*sort|write\b[^.!?]*\bquicksort)\b/i.test(probLower) &&
+		!/topological\s*sort|sort.*topological|sort.*graph|sort.*dag/i.test(probLower) &&
+		!/kth\s+largest|find.*(?:kth|median)|nth\s+(?:largest|smallest)|comparator|custom\s+sort/i.test(probLower)
+	) {
+		const s = getDomainSpec("sorting");
+		if (s) { console.log("[auto-detect] Keyword → sorting"); return { domain: "sorting", spec: s, wasGenerated: false }; }
+	}
+
+	// Compression
+	if (/\b(?:lossless\s+compression|compress\s+(?:and|then)\s+decompress|huffman\s+coding|lempel|deflate|gzip|bzip2|lz77|lz78|lzw|run-length\s+encod|data\s+compression\s+algorithm)\b/i.test(probLower)) {
+		const s = getDomainSpec("compression");
+		if (s) { console.log("[auto-detect] Keyword → compression"); return { domain: "compression", spec: s, wasGenerated: false }; }
+	}
+
+	// CLI Project
+	const pCliKws = ["programming language", "compiler for", "interpreter for",
+		"create a language", "design a language", "build a shell",
+		"build a database", "command-line tool", "command line tool",
+		"cli tool", "virtual machine", "bytecode interpreter",
+		"lexer and parser", "tokenizer and parser",
+		"write a compiler", "write an interpreter", "implement a language",
+		"type checker", "type system", "code generator"];
+	if (pCliKws.some(kw => probLower.includes(kw))) {
+		const s = getDomainSpec("cli-project");
+		if (s) { console.log("[auto-detect] Keyword → cli-project"); return { domain: "cli-project", spec: s, wasGenerated: false, domainType: "cli-project" }; }
+	}
+
+	// Project / Game
+	const pProjKws = ["game", "snake", "pong", "tetris", "platformer", "breakout",
+		"maze", "pac-man", "space invaders", "flappy bird",
+		"html game", "js game", "javascript game", "web game",
+		"browser game", "canvas game", "video game", "arcade game",
+		"build a game", "create a game", "make a game",
+		"html/css", "web app", "single page app", "single-page app",
+		"frontend", "front-end", "interactive web", "web page with"];
+	if (pProjKws.some(kw => probLower.includes(kw))) {
+		const s = getDomainSpec("project");
+		if (s) { console.log("[auto-detect] Keyword → project"); return { domain: "project", spec: s, wasGenerated: false, domainType: "project" }; }
+	}
+
+	// Document domains
+	const pDocKws: [string, string[]][] = [
+		["research", ["research paper", "write a report", "literature review", "analyze the", "compare the", "investigation of"]],
+		["geography", ["demographic", "country compar", "population", "gdp per capita", "land area", "geographic fact", "capital of", "square kilometer", "square mile"]],
+		["law", ["legal analysis", "legal implications", "statute", "jurisdiction", "constitutional", "court ruling", "case law", "legislat"]],
+		["history", ["historical event", "history of", "ancient", "medieval", "world war", "cold war", "renaissance", "industrial revolution", "century"]],
+	];
+	for (const [dn, kwl] of pDocKws) {
+		if (kwl.some(kw => probLower.includes(kw))) {
+			const s = getDomainSpec(dn);
+			if (s) { console.log(`[auto-detect] Keyword → document "${dn}"`); return { domain: dn, spec: s, wasGenerated: false }; }
+		}
+	}
+
+	console.log("[auto-detect] No keyword match — classifying with LLM…");
 	const { matched, confidence } = await classifyDomain(problem, registered);
 
 	// Post-process: "math" domain is ONLY for formal proofs (Lean4/Coq).
@@ -162,8 +224,6 @@ export async function detectOrGenerateDomain(problem: string): Promise<AutoDetec
 			return { domain: domain!, spec: existing, wasGenerated: false };
 		}
 	}
-
-	const probLower = problem.toLowerCase();
 
 	// ── Keyword-based domain detection ───────────────────────────────────────
 	// Ordered by specificity: each domain's keywords are checked in priority

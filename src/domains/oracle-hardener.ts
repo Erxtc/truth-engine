@@ -12,6 +12,19 @@ import * as os from "os";
 import * as path from "path";
 import { RESTORE_INF_JS, pythonRunnerSource } from "../utils/general";
 
+// ── Seeded PRNG (mulberry32) — deterministic fuzz phase ─────────────────────
+
+function mulberry32(seed: number): () => number {
+  return () => {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+const fuzzRand = mulberry32(42);
+
 // ── Shared JS harness builder (Python bridge) ──────────────────────────────
 
 /** Build a Node.js harness that bridges a Python solution to a JS oracle.
@@ -172,8 +185,8 @@ export function hardenOracle(oracleJs: string): { ok: boolean; error?: string } 
 		const fuzzResults: Array<{ passed: boolean }> = [];
 		for (let i = 0; i < 10; i++) {
 			// Random inputs: different array sizes and value ranges
-			const len = 1 + Math.floor(Math.random() * 20);
-			const arr = Array.from({ length: len }, () => Math.floor(Math.random() * 1000) - 500);
+			const len = 1 + Math.floor(fuzzRand() * 20);
+			const arr = Array.from({ length: len }, () => Math.floor(fuzzRand() * 1000) - 500);
 			const stubWithInput = `def proposedSolution(*args):\n    return sum(args) if args else 0\n`;
 			const pyWrapper = pythonRunnerSource(stubWithInput);
 			fs.writeFileSync(path.join(tmpDir, "solution.py"), pyWrapper);

@@ -7,7 +7,7 @@ import { execSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { normalizeEscapes, transpileToJs } from "../utils/general";
+import { normalizeEscapes, pythonRunnerSource, transpileToJs } from "../utils/general";
 import { validateAndFixPython, validateAndFixJs } from "../utils/code-validator";
 import { buildPythonOracleHarness } from "./oracle-hardener";
 import type { Proposal } from "../core/types";
@@ -57,7 +57,7 @@ export function runCustomOracle(
 				}
 				const normalizedSource = validation.source;
 				const pyFile = path.join(tmpDir, "solution.py");
-				const pyWrapper = `import sys, json, math\n${normalizedSource}\n\ndef _auto_int_keys(obj):\n    """JSON serializes integer keys as strings. Convert numeric string keys back to ints\n    so the model's solution (written expecting Python int keys) works correctly."""\n    if isinstance(obj, dict):\n        result = {}\n        for k, v in obj.items():\n            if isinstance(k, str) and (k.isdigit() or (k.startswith('-') and k[1:].isdigit())):\n                k = int(k)\n            result[k] = _auto_int_keys(v)\n        return result\n    if isinstance(obj, list):\n        return [_auto_int_keys(x) for x in obj]\n    return obj\n\ndef _json_safe(v):\n    if isinstance(v, dict):\n        return {k: _json_safe(v) for k, v in v.items()}\n    if isinstance(v, (list, tuple)):\n        return [_json_safe(x) for x in v]\n    if isinstance(v, float) and math.isinf(v):\n        return \"__INF__\" if v > 0 else \"__NEG_INF__\"\n    if isinstance(v, float) and math.isnan(v):\n        return None\n    return v\n\n_args = _auto_int_keys(json.loads(sys.stdin.read() or \"[]\"))\n_result = proposedSolution(*_args)\n# Preserve None as null — functions that legitimately return None (e.g. cycle detection)\n# must not have their return value replaced with a positional argument.\nprint(json.dumps(_json_safe(_result)))`;
+				const pyWrapper = pythonRunnerSource(normalizedSource, { autoIntKeys: true });
 				fs.writeFileSync(pyFile, pyWrapper);
 				const pyFileSafe = JSON.stringify(pyFile);
 				verifyHarness = buildPythonOracleHarness({

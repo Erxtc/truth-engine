@@ -57,7 +57,18 @@ for (const problem of problems) {
   const stderr = proc.stderr?.toString() ?? "";
   const duration = Date.now() - t0;
 
-  const solved = /✓ SOLVED|PROBLEM SOLVED|FINAL ANSWER/i.test(stdout);
+  // Parse structured result from output (preferred) or fall back to regex
+  let solved = false;
+  const resultMatch = stdout.match(/\{"result":\{[^}]+\}\}/);
+  if (resultMatch) {
+    try {
+      const parsed = JSON.parse(resultMatch[0]);
+      solved = parsed.result?.solved === true;
+    } catch { /* fall through to regex */ }
+  }
+  if (!solved && !resultMatch) {
+    solved = /✓ SOLVED|PROBLEM SOLVED|FINAL ANSWER/i.test(stdout);
+  }
   const taskAgentUsed = stdout.includes("task-agent") || stdout.includes("agentic solver");
 
   console.log(`  ${solved ? "PASS" : "FAIL"} | ${(duration / 1000).toFixed(1)}s | task-agent: ${taskAgentUsed} | exit=${proc.exitCode}`);

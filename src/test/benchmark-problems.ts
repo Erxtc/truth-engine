@@ -283,7 +283,7 @@ Example 2: proposedSolution(100, 5, 0, 0.5, 0.2, 3)`,
   },
   {
     name: "gillespie-sir",
-    description: `Write proposedSolution(S0, I0, R0, beta, gamma, t_max) implementing the Gillespie algorithm (stochastic simulation algorithm) for the SIR model with infection rate beta*S*I and recovery rate gamma*I. Return dict with keys "t" (event times list) and "S", "I", "R" (compartment values at each event time). Initial state at t=0 must be included as the first entry.
+    description: `Write proposedSolution(S0, I0, R0, beta, gamma, t_max) implementing the Gillespie algorithm (stochastic simulation algorithm) for the SIR model with infection rate beta*S*I and recovery rate gamma*I. Return dict with keys "t" (event times list) and "S", "I", "R" (compartment values at each event time). Initial state at t=0 must be included as the first entry. Seed the random number generator with 42 at the start to make results reproducible.
 
 Example 1: proposedSolution(100, 1, 0, 0.01, 0.1, 10) — Return compartments at every event until t > 10
 Example 2: proposedSolution(50, 5, 0, 0.02, 0.1, 5)`,

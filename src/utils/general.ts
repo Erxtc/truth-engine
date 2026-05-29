@@ -118,22 +118,54 @@ export function parseOracleOutput(output: string): ParsedOracleOutput {
  * Wrap Python source code (a stub or solution defining proposedSolution) in a
  * full runner script that reads JSON args from stdin and prints the JSON-safe
  * result to stdout. Used by oracle harnesses in main.ts and auto-detect.ts.
+ *
+ * Options:
+ *   autoIntKeys — inject _auto_int_keys to convert JSON-stringified int dict
+ *                 keys back to Python ints (needed when the model expects int
+ *                 keys but JSON serializes them as strings).
  */
-export function pythonRunnerSource(stubOrSolution: string): string {
+export function pythonRunnerSource(stubOrSolution: string, opts?: { autoIntKeys?: boolean }): string {
+  const autoIntKeys = opts?.autoIntKeys;
+
   return [
     `import sys, json, math`,
     stubOrSolution,
     ``,
+    autoIntKeys ? [
+      `def _auto_int_keys(obj):`,
+      `    """JSON serializes integer keys as strings. Convert numeric string keys back to ints."""`,
+      `    if isinstance(obj, dict):`,
+      `        result = {}`,
+      `        for k, v in obj.items():`,
+      `            if isinstance(k, str) and (k.isdigit() or (k.startswith('-') and k[1:].isdigit())):`,
+      `                k = int(k)`,
+      `            result[k] = _auto_int_keys(v)`,
+      `        return result`,
+      `    if isinstance(obj, list):`,
+      `        return [_auto_int_keys(x) for x in obj]`,
+      `    return obj`,
+      ``,
+    ].join("\n") : null,
     `def _json_safe(v):`,
     `    if isinstance(v, dict): return {k: _json_safe(x) for k,x in v.items()}`,
     `    if isinstance(v, (list, tuple)): return [_json_safe(x) for x in v]`,
     `    if isinstance(v, float) and math.isinf(v): return "__INF__" if v > 0 else "__NEG_INF__"`,
     `    if isinstance(v, float) and math.isnan(v): return None`,
+    `    if hasattr(v, "__dict__"): return _json_safe(v.__dict__)`,
     `    return v`,
-    `_args = json.loads(sys.stdin.read() or "[]")`,
+    autoIntKeys
+      ? `# Preserve None as null — functions that legitimately return None (e.g. cycle detection)\n# must not have their return value replaced with a positional argument.`
+      : null,
+    autoIntKeys
+      ? `_args = _auto_int_keys(json.loads(sys.stdin.read() or "[]"))`
+      : `_args = json.loads(sys.stdin.read() or "[]")`,
     `_result = proposedSolution(*_args)`,
-    `print(json.dumps(_json_safe(_result)))`,
-  ].join("\n");
+    `_safe = _json_safe(_result)`,
+    `try:`,
+    `    print(json.dumps(_safe))`,
+    `except (TypeError, ValueError) as _je:`,
+    `    print(json.dumps({"_type_error": "proposedSolution() returned a non-JSON-serializable value. Return plain data types only: list, dict, int, float, str, bool, None. Got: " + type(_result).__name__, "_raw_repr": repr(_result)[:500]}))`,
+  ].filter(x => x !== null).join("\n");
 }
 
 // ── JSON escape normalization ──────────────────────────────────────────────

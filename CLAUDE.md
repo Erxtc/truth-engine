@@ -63,6 +63,26 @@ dead end? Use your judgment. You're an engineer, not a code monkey.
 **Multiple agents work on this simultaneously.** Check `git status` and `git log
 --oneline -5` before starting. Coordinate through clean commits.
 
+### Agent philosophy — peer researchers, not worker drones
+
+This is a group of **scientific researchers working together.** Every agent
+(including sub-agents) is a full peer with equal power — full tool access, full
+file system, full shell, full web search. No agent is subordinate. No agent has
+restricted permissions.
+
+**Any agent can spawn another researcher** with well-contextualized knowledge of
+the specific sub-problem. The spawned agent gets a focused prompt, relevant
+context, and the same full tool set. They coordinate to solve problems together.
+
+Think: "I'm stuck on this part, let me ask a colleague who specializes in this"
+— not "I'll delegate this to a worker."
+
+When designing agent interactions:
+- Agents delegate to peers, not subordinates
+- Context matters — give spawned agents specific, actionable context
+- Parallelism is natural — researchers work on different sub-problems simultaneously
+- Results come back as findings, not just task completions
+
 ### What to work on
 
 ```

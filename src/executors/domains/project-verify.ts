@@ -394,10 +394,10 @@ const DEFAULT_OPTIONS: Required<ProjectVerifyOptions> = {
  * The script lives in verify-project.js (clean, editable, syntax-highlighted).
  * We read it at import time so it can be passed to task-agent sandboxes.
  */
-const _verifyScriptPath = path.join(import.meta.dirname ?? __dirname, "verify-project.js");
+const _verifyScriptPath = path.join(import.meta.dir, "verify-project.js");
 export const VERIFY_SCRIPT: string = fs.readFileSync(_verifyScriptPath, "utf-8");
 
-const _cliVerifyScriptPath = path.join(import.meta.dirname ?? __dirname, "verify-cli-project.js");
+const _cliVerifyScriptPath = path.join(import.meta.dir, "verify-cli-project.js");
 export const VERIFY_CLI_SCRIPT: string = fs.readFileSync(_cliVerifyScriptPath, "utf-8");
 
 export async function verifyHtmlProject(

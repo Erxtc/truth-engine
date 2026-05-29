@@ -4,7 +4,16 @@
  */
 
 import { JsonFileStore } from "../utils/json-file-store";
-import type { FailureClass } from "./inspector";
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+export type FailureClass =
+  | "parse_error"
+  | "syntax_error"
+  | "type_error"
+  | "wrong_output"
+  | "wrong_approach"
+  | "capability_gap";
 
 const STATE_PATH = import.meta.dir + "/.capability-state.json";
 

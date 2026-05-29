@@ -13,6 +13,7 @@ import { logEvent } from "./utils/prompt-logger";
 import { loadConfig } from "./cli";
 import { detectOrGenerateDomain } from "./domains/auto-detect";
 import { getDomainSpec } from "./executors/domains/registry";
+import { createHash } from "crypto";
 import { runBaseline } from "./agents/baseline";
 import { runRepair } from "./agents/repair";
 import { runTaskAgent } from "./llm/task-agent";
@@ -21,6 +22,7 @@ import { runSupervisor } from "./agents/supervisor";
 import { getPreset } from "./llm/workflow-presets";
 import { VERIFY_SCRIPT, VERIFY_CLI_SCRIPT } from "./executors/domains/project-verify";
 import { recordAttempt } from "./analysis/capability-tracker";
+import { formatReferenceData } from "./domains/reference-data";
 import { getModelTier } from "./llm";
 import type { WorkingContext, Proposal, ExecutionResult, RunParams, ConfidenceLevel } from "./core/types";
 import type { SupervisorDecision } from "./agents/supervisor";
@@ -151,8 +153,9 @@ async function runSupervisorLoop(params: {
     domainInvariants?: string[];
     oracleContent?: string;
     problemLanguage?: string;
+    referenceData?: string;
 }): Promise<{ solved: boolean; callsSpent: number }> {
-    const { domain, problem, domainType, health, setupFiles, enableWebSearch, maxTurns, label, handleEscalate, domainInvariants, oracleContent, problemLanguage } = params;
+    const { domain, problem, domainType, health, setupFiles, enableWebSearch, maxTurns, label, handleEscalate, domainInvariants, oracleContent, problemLanguage, referenceData } = params;
     let callsSpent = 0;
     let maxDepth = params.maxDepth ?? 3;
     let maxBranches = params.maxBranches ?? 2;
@@ -215,6 +218,7 @@ async function runSupervisorLoop(params: {
             previousAttemptSummary: previousAttemptSummary || undefined,
             domainInvariants,
             oracleContent,
+            referenceData,
             workflow: problemLanguage ? { language: problemLanguage } : undefined,
         });
         callsSpent += retryResult.turns;
@@ -273,6 +277,9 @@ async function main() {
   const health = new HealthMonitor();
 
   const outcome: RunOutcome = { solved: false, solvedBy: "pipeline", totalCalls: 0, domain: "", description: problem.slice(0, 120) };
+  let finalSolutionCode = "";
+  let oracleHash = "";
+  function hash(s: string): string { return createHash("sha256").update(s).digest("hex").slice(0, 16); }
 
   let _outcomeRecorded = false;
   const _recordOutcome = () => {
@@ -313,7 +320,8 @@ async function main() {
   let detected: Awaited<ReturnType<typeof detectOrGenerateDomain>>;
   if (explicitSpec && explicitDomain) {
     console.log(`   Domain: ${explicitDomain} (explicit — skipping auto-detect)`);
-    detected = { domain: explicitDomain!, spec: explicitSpec, wasGenerated: false };
+    const domainType = (explicitDomain === "project" || explicitDomain === "cli-project") ? explicitDomain : undefined;
+    detected = { domain: explicitDomain!, spec: explicitSpec, wasGenerated: false, domainType };
   } else {
     detected = await detectOrGenerateDomain(problem);
     totalCalls++;
@@ -324,7 +332,11 @@ async function main() {
   const spec = detected.spec;
   const domain = detected.domain;
   const oracleSource = spec?.testSource ?? "";
+  oracleHash = oracleSource ? hash(oracleSource) : "no-oracle";
   outcome.domain = domain;
+
+  // Reference data for standard algorithms (S-boxes, round constants, etc.)
+  const referenceData = formatReferenceData(`${problem} ${domain} ${detected.domainType ?? ""}`) || undefined;
 
   if (!spec) {
     console.log(`\n✗ FAILED — domain generation returned no spec`);
@@ -374,6 +386,7 @@ async function main() {
       setupFiles,
       healthMonitor: health,
       domainInvariants: spec.invariants,
+      referenceData,
       workflow: cfg.problemLanguage ? { language: cfg.problemLanguage } : undefined,
     });
 
@@ -382,6 +395,7 @@ async function main() {
     if (taskResult.success) {
       console.log(`\n✓ SOLVED by task-agent (${taskResult.turns} turns, ${totalCalls} total LLM calls)`);
       logEvent("✓ SOLVED", `task-agent (${domainLabel})`);
+      finalSolutionCode = taskResult.sourceCode ?? "";
       solved("task-agent");
       return;
     }
@@ -404,6 +418,7 @@ async function main() {
       label: domainLabel,
       domainInvariants: spec.invariants,
       problemLanguage: cfg.problemLanguage,
+      referenceData,
     });
     totalCalls += supervisorResult.callsSpent;
 
@@ -429,6 +444,7 @@ async function main() {
   if (baselineResult.passed) {
     console.log(`\n✓ SOLVED by 1-shot baseline (${totalCalls} LLM calls)`);
     logEvent("✓ SOLVED", "1-shot baseline");
+    finalSolutionCode = baselineResult.code ?? "";
     solved("1-shot");
     return;
   }
@@ -478,6 +494,7 @@ async function main() {
             if (reRunResult.overallPassed) {
               console.log(`\n✓ SOLVED by repair (${totalCalls} LLM calls)`);
               logEvent("✓ SOLVED", "repair");
+              finalSolutionCode = repairedCode;
               solved("repair");
               return;
             }
@@ -528,6 +545,7 @@ async function main() {
     previousAttemptSummary,
     domainInvariants: spec.invariants,
     oracleContent: oracleSource || undefined,
+    referenceData,
     workflow: cfg.problemLanguage ? { language: cfg.problemLanguage } : undefined,
   });
 
@@ -536,6 +554,7 @@ async function main() {
   if (taskResult.success) {
     console.log(`\n✓ SOLVED by task-agent (${taskResult.turns} turns, ${totalCalls} total LLM calls)`);
     logEvent("✓ SOLVED", "task-agent");
+    finalSolutionCode = taskResult.sourceCode ?? "";
     solved("task-agent");
     return;
   }
@@ -568,6 +587,7 @@ async function main() {
     problemLanguage: cfg.problemLanguage,
     domainInvariants: spec.invariants,
     oracleContent: oracleSource || undefined,
+    referenceData,
   });
   totalCalls += supervisorResult.callsSpent;
 
@@ -583,7 +603,8 @@ async function main() {
 
   } finally {
     // ── Structured result for programmatic consumers (benchmark, agents) ──────
-    console.log(`\n${JSON.stringify({ result: { solved: outcome.solved, solvedBy: outcome.solvedBy, totalCalls: outcome.totalCalls, domain: outcome.domain, description: outcome.description.slice(0, 200), modelTier } })}`);
+    const solutionHash = finalSolutionCode ? hash(finalSolutionCode) : "";
+    console.log(`\n${JSON.stringify({ result: { solved: outcome.solved, solvedBy: outcome.solvedBy, totalCalls: outcome.totalCalls, domain: outcome.domain, description: outcome.description.slice(0, 200), modelTier, oracleHash, solutionHash } })}`);
   }
 }
 

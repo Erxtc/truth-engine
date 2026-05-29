@@ -78,21 +78,24 @@ function runPipeline(problem: TestProblem): { passed: boolean; calls: number; to
     );
     const duration = Date.now() - t0;
 
-    // Parse structured result from output (preferred) or fall back to regex
+    // Parse structured result from stdout (most reliable — doesn't depend on log files)
     let passed = false;
-    const resultMatch = output.match(/\{"result":\{[^}]+\}\}/);
-    if (resultMatch) {
+    let jsonCalls = 0;
+    const resultLine = output.split("\n").find(l => l.includes('"result"'));
+    if (resultLine) {
       try {
-        const parsed = JSON.parse(resultMatch[0]);
+        const parsed = JSON.parse(resultLine.trim());
         passed = parsed.result?.solved === true;
-      } catch { /* fall through to regex */ }
+        jsonCalls = parsed.result?.totalCalls ?? 0;
+      } catch { /* fall through */ }
     }
-    if (!passed && !resultMatch) {
+    if (!resultLine) {
       passed = /✓ SOLVED|PROBLEM SOLVED|FINAL ANSWER/i.test(output);
     }
 
     const log = lastLogPath();
-    const calls = log ? countCalls(log) : 0;
+    // Prefer JSON-reported call count (accurate, not affected by log rotation)
+    const calls = jsonCalls > 0 ? jsonCalls : (log ? countCalls(log) : 0);
     const tokens = log ? totalTokens(log) : 0;
     const cost = log ? totalCost(log) : 0;
 

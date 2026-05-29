@@ -321,12 +321,21 @@ FAILING TO ADD THESE CHECKS MEANS YOUR ORACLE WILL PASS BROKEN CODE.`.trimStart(
 			const oracleJs = sanitizeOracleJs(transpileToJs(r.oracle_js));
 			lastOracleJs = oracleJs;
 
+			// Inject problem-statement examples as ground-truth checks BEFORE hardening.
+			// This catches oracles that only have weak structural checks — the deterministic
+			// examples add value-level assertions so broken stubs like return-first-arg fail.
+			const oracleJsWithExamples = injectProblemExamples(problem, oracleJs);
+			const oracleForHardening = oracleJsWithExamples !== oracleJs ? oracleJsWithExamples : oracleJs;
+			if (oracleJsWithExamples !== oracleJs) {
+				console.log(`[auto-detect] Injected problem examples into oracle ✓`);
+			}
+
 			// Validate oracle: must reject at least basic broken stubs
-			const hardened = hardenOracle(oracleJs);
+			const hardened = hardenOracle(oracleForHardening);
 			if (!hardened.ok) {
 				console.warn(`[auto-detect] Oracle hardening failed: ${hardened.error}`);
 				// Try deterministic auto-repair BEFORE spending another LLM call
-				const repaired = tryRepairOracle(oracleJs);
+				const repaired = tryRepairOracle(oracleForHardening);
 				if (repaired) {
 					const recheck = hardenOracle(repaired);
 					if (recheck.ok) {
@@ -362,20 +371,14 @@ FAILING TO ADD THESE CHECKS MEANS YOUR ORACLE WILL PASS BROKEN CODE.`.trimStart(
 			}
 			console.log(`[auto-detect] Oracle hardening: rejects broken stubs ✓`);
 
-			// Inject problem-statement examples as ground-truth checks
-			const oracleJsWithExamples = injectProblemExamples(problem, oracleJs);
-			if (oracleJsWithExamples !== oracleJs) {
-				console.log(`[auto-detect] Injected problem examples into oracle ✓`);
-			}
-
 			const spec: DomainSpec = {
 				name: r.domain_name,
 				invariants: r.invariants,
 				requiredConfidence: r.required_confidence as 1 | 2 | 3 | 4,
 				solutionFormat: r.solution_format,
-				testSource: oracleJsWithExamples,
+				testSource: oracleForHardening,
 				async run(proposal: Proposal, _ctx: WorkingContext, artifact: Artifact) {
-					return runCustomOracle(oracleJsWithExamples, proposal, artifact, r.domain_name);
+					return runCustomOracle(oracleForHardening, proposal, artifact, r.domain_name);
 				},
 			};
 
@@ -391,7 +394,7 @@ FAILING TO ADD THESE CHECKS MEANS YOUR ORACLE WILL PASS BROKEN CODE.`.trimStart(
 				invariants: r.invariants,
 				required_confidence: r.required_confidence,
 				solution_format: r.solution_format,
-				oracle_js: oracleJsWithExamples,
+				oracle_js: oracleForHardening,
 				cachedAt: new Date().toISOString(),
 			});
 			return spec;
@@ -405,7 +408,10 @@ FAILING TO ADD THESE CHECKS MEANS YOUR ORACLE WILL PASS BROKEN CODE.`.trimStart(
 
 	// Auto-repair: try to inject type guards into the best oracle we got.
 	if (lastOracleJs) {
-		const repaired = tryRepairOracle(lastOracleJs);
+		// Inject problem examples first for extra deterministic value checks
+		const withExamples = injectProblemExamples(problem, lastOracleJs);
+		const baseOracle = withExamples !== lastOracleJs ? withExamples : lastOracleJs;
+		const repaired = tryRepairOracle(baseOracle);
 		if (repaired) {
 			const recheck = hardenOracle(repaired);
 			if (recheck.ok) {

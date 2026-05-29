@@ -104,6 +104,10 @@ export interface TaskAgentConfig {
    *  first observation so the model knows the test cases without spending a
    *  turn on read_file("oracle.js"). */
   oracleContent?: string;
+  /** Reference data for standard algorithms (S-boxes, constants, pseudocode).
+   *  Injected into the first user message so the model doesn't need to recall
+   *  or web-search canonical values for AES, RSA, SHA, etc. */
+  referenceData?: string;
   /** Internal: override the system prompt entirely (used by sub-agents). Not for external use. */
   _systemPromptOverride?: string;
 }
@@ -772,9 +776,10 @@ export async function runTaskAgent(
   const oracleBlock = cfg.oracleContent
     ? `\n\n── ORACLE TESTS (pre-loaded — you do NOT need to read oracle.js) ──\nThe oracle runs this verify function against your solution. Study these test cases BEFORE writing code:\n\n\`\`\`javascript\n${cfg.oracleContent.slice(0, 2000)}\n\`\`\`\n\nMake sure your solution handles ALL the edge cases shown in the tests above.`
     : "";
+  const referenceBlock = cfg.referenceData ?? "";
   const messages: Array<{ role: string; content: string }> = [
     { role: "system", content: systemPrompt },
-    { role: "user", content: `Task: ${task}${oracleBlock}\n\nBegin by thinking about the problem. Then use tools to solve it step by step.` },
+    { role: "user", content: `Task: ${task}${oracleBlock}${referenceBlock}\n\nBegin by thinking about the problem. Then use tools to solve it step by step.` },
   ];
 
   let finalSummary = "";

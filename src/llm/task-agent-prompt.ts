@@ -165,7 +165,7 @@ KEY PRINCIPLE: Verify each piece BEFORE composing. A wrong component poisons the
 - The file must work when opened directly in a browser — no build step, no server required
 - Implement EVERY feature requested — no stubs, no TODOs, no placeholder text`
     : `${wf.language.toUpperCase()}:
-- ${wf.language === "python" ? 'Function named `proposedSolution` unless told otherwise' : 'Follow the output format specified above'}
+- ${wf.language === "python" ? 'Function named `proposedSolution` unless told otherwise. If the problem statement specifies a function signature with parameter names, COPY THE EXACT PARAMETERS — same names, same order. The problem specification OVERRIDES any parameter conventions from your training data.' : 'Follow the output format specified above'}
 - ${wf.language === "python" ? "Python 3, standard library only" : "Use standard libraries only"}
 - ${wf.language === "python" ? "Proper 4-space indentation, no semicolons" : "Clean, well-formatted code"}
 - ${wf.language === "python" ? "RETURN PLAIN DATA ONLY: Your return value will be JSON-serialized by the test harness. Return list, dict, int, float, str, bool, None. NEVER return custom class instances (Node, TreeNode, etc.) — the oracle CANNOT serialize them. If you need a tree/graph/object, convert it to a plain list or dict before returning." : ""}`;

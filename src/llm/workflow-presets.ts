@@ -244,9 +244,7 @@ const DOMAIN_PRESETS: Record<string, Partial<WorkflowConfig>> = {
       "Working Python CLI application with all required features implemented and tested",
     language: "python",
     testFirst: false,
-    enableWebSearch: true,
-    enableNotes: true,
-    researchPhases: true,
+    enableWebSearch: false,
     outputType: "code",
     invariants: [
       "Write a COMPLETE, working Python CLI application — no stubs, no TODOs",

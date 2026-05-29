@@ -41,6 +41,22 @@ export function logEvent(label: string, detail?: string) {
     append(`[${ts}] EVENT ${msg}\n`);
 }
 
+function rotateLogs(logsDir: string): void {
+    try {
+        const rotateFiles = (prefix: string, suffix: string, max: number) => {
+            const files = fs.readdirSync(logsDir)
+                .filter(f => f.startsWith(prefix) && f.endsWith(suffix))
+                .map(f => path.join(logsDir, f))
+                .sort(); // oldest first
+            while (files.length > max) {
+                try { fs.unlinkSync(files.shift()!); } catch {}
+            }
+        };
+        rotateFiles("truth-engine-", ".log", 50);
+        rotateFiles("truth-engine-", ".full.log", 50);
+    } catch {}
+}
+
 function getLogPath(): string | null {
     if (process.env.LOG_PROMPTS === "false") return null;
     if (!logPath) {
@@ -57,24 +73,7 @@ function getLogPath(): string | null {
         const latest = path.join(process.cwd(), "latest.log");
         try { fs.unlinkSync(latest); } catch {}
         try { fs.symlinkSync(logPath, latest); } catch {}
-        // Rotate: keep only the last 50 log files
-        try {
-            const files = fs.readdirSync(logsDir)
-                .filter(f => f.startsWith("truth-engine-") && f.endsWith(".log"))
-                .map(f => path.join(logsDir, f))
-                .sort(); // oldest first
-            while (files.length > 50) {
-                try { fs.unlinkSync(files.shift()!); } catch {}
-            }
-            // Also rotate .full.log sidecar files
-            const fullFiles = fs.readdirSync(logsDir)
-                .filter(f => f.startsWith("truth-engine-") && f.endsWith(".full.log"))
-                .map(f => path.join(logsDir, f))
-                .sort();
-            while (fullFiles.length > 50) {
-                try { fs.unlinkSync(fullFiles.shift()!); } catch {}
-            }
-        } catch {}
+        rotateLogs(logsDir);
         if (!quietMode) console.log(`[log] ${logPath}  (→ latest.log)`);
     }
     return logPath;

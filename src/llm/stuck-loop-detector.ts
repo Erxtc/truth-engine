@@ -184,24 +184,51 @@ This is your zoom-out #${this.zoomOutCount}. After 2 zoom-outs the task terminat
     return null;
   }
 
-  /** Detect exploration storms: 4+ exploration commands (ls, find, cat, read_file,
-   *  pwd, which, type) in the last 5 turns without a write_file or test execution.
-   *  Models get stuck "looking around" when they don't understand the problem —
-   *  exploring more doesn't help; they need to commit to an approach. */
+  /** Detect exploration storms: too many exploration commands without writing
+   *  code or running test/verification commands.
+   *
+   *  Thresholds escalate:
+   *  - 2 of last 3 exploration → early warning
+   *  - 3 of last 4 exploration → zoom-out
+   *  - 4 of last 5 exploration after zoom-out → terminate */
   checkExplorationStorm(history: TurnRecord[]): string | null {
-    if (history.length < 5) return null;
-    const EXPLORE_TOOLS = new Set(["ls", "find", "cat", "read_file", "pwd", "which", "type", "head", "tail", "wc"]);
-    const PRODUCTIVE_TOOLS = new Set(["write_file", "edit_file", "run_command"]);
-    const last5 = history.slice(-5);
-    const exploreCount = last5.filter(t => EXPLORE_TOOLS.has(t.tool)).length;
-    const productiveCount = last5.filter(t => PRODUCTIVE_TOOLS.has(t.tool)).length;
-    // Storm: 4+ exploration, no productive action in last 5
-    if (exploreCount >= 4 && productiveCount === 0) {
-      if (this.zoomOutCount >= 2) return this.zoomOutTerminated("exploring the workspace without taking action");
-      return this.zoomOutMessage(
-        `You've spent ${exploreCount}/${last5.length} recent turns exploring (ls/find/cat) without writing code or running tests. ` +
-        `You have all the information you need. COMMIT to an approach: write the solution file and run the tests.`
-      );
+    // Helper: is this turn an exploration action?
+    // Dedicated explore tools (read_file, pwd, etc.) OR run_command with ls/find/cat/head/tail/wc
+    const isExplore = (t: TurnRecord): boolean => {
+      if (["read_file", "pwd", "which", "type"].includes(t.tool)) return true;
+      if (t.tool === "run_command") {
+        const cmd = t.key;
+        return /^(ls|find|cat|head|tail|wc|file|env)\b/.test(cmd) || /^(echo|pwd|which|type)\b/.test(cmd);
+      }
+      return false;
+    };
+    const isProductive = (t: TurnRecord): boolean => {
+      if (["write_file", "edit_file"].includes(t.tool)) return true;
+      if (t.tool === "run_command") {
+        const cmd = t.key;
+        // Productive: runs code, tests, verification, installs, builds
+        return /^(python|node|npm|pip|make|go|rust|cargo|javac?|gcc|g\+\+|Lean|lean)\b/.test(cmd)
+          || cmd.includes("oracle") || cmd.includes("verify") || cmd.includes("test");
+      }
+      return false;
+    };
+    // Early: 2 of last 3 exploring → gentle nudge
+    if (history.length >= 3) {
+      const last3 = history.slice(-3);
+      if (last3.filter(isExplore).length >= 2 && last3.filter(isProductive).length === 0) {
+        return `NOTE: You've spent 2/3 recent turns exploring. You know the environment — start writing code now. Create the solution file and run the tests.`;
+      }
+    }
+    // Storm: 3 of last 4 exploring → zoom out
+    if (history.length >= 4) {
+      const last4 = history.slice(-4);
+      if (last4.filter(isExplore).length >= 3 && last4.filter(isProductive).length === 0) {
+        if (this.zoomOutCount >= 2) return this.zoomOutTerminated("exploring the workspace without taking action");
+        return this.zoomOutMessage(
+          `You've spent 3+/4 recent turns exploring the workspace without writing code or running tests. ` +
+          `You have all the information you need. COMMIT: write the solution file and run the tests NOW.`
+        );
+      }
     }
     return null;
   }

@@ -31,19 +31,22 @@ while [[ $# -gt 0 ]]; do
         --actions-only)    MODE="actions"; shift ;;
         --oracle)          MODE="oracle"; shift ;;
         -t|--tokens)       MODE="tokens"; shift ;;
+        --json)            MODE="json"; shift ;;
         -h|--help)
-            echo "Usage: ./scripts/debug.sh [PROBLEM_FILTER] [--full-transcript|--actions-only|--oracle|-t]"
+            echo "Usage: ./scripts/debug.sh [PROBLEM_FILTER] [--full-transcript|--actions-only|--oracle|-t|--json]"
             echo ""
             echo "  PROBLEM_FILTER        Substring match against log content (e.g. 'glycolysis')"
             echo "  --full-transcript      Show every turn's observation in full"
             echo "  --actions-only         Just agent actions + outcomes"
             echo "  --oracle               Show oracle source from log"
             echo "  -t, --tokens           Token usage timeline"
+            echo "  --json                 Machine-readable JSON failure analysis"
             echo ""
             echo "Examples:"
             echo "  ./scripts/debug.sh                               # Latest run timeline"
             echo "  ./scripts/debug.sh glycolysis --full-transcript   # Deep dive on glycolysis failure"
             echo "  ./scripts/debug.sh sorting --actions-only         # What did the agent do?"
+            echo "  ./scripts/debug.sh --json                         # Structured failure analysis"
             exit 0
             ;;
         *) PROBLEM_FILTER="$PROBLEM_FILTER $1"; shift ;;
@@ -200,6 +203,198 @@ if [[ "$MODE" == "full" ]]; then
         fi
     done
     echo ""
+fi
+
+# ── JSON mode (machine-readable failure analysis) ───────────────────────────
+
+if [[ "$MODE" == "json" ]]; then
+    export DEBUG_LOG_FILE="$FILE"
+    python3 << 'PYEOF'
+import json, re, os, sys
+
+logfile = os.environ.get("DEBUG_LOG_FILE", "")
+if not logfile:
+    print(json.dumps({"error": "no log file found"}))
+    sys.exit(0)
+
+with open(logfile) as f:
+    content = f.read()
+
+# ── Helpers ──
+def safe_grep(pattern, text):
+    return [m for m in re.finditer(pattern, text, re.IGNORECASE)]
+
+def grep_count(pattern, text):
+    return len(re.findall(pattern, text, re.IGNORECASE))
+
+# ── Basic stats ──
+calls = grep_count(r"RAW RESPONSE", content)
+tokens_match = re.findall(r"=\s*(\d+)", "\n".join(re.findall(r"tokens:.*", content)))
+total_tokens = sum(int(t) for t in tokens_match) if tokens_match else 0
+cost_match = re.findall(r"cost:\s*\$?([\d.]+)", content, re.IGNORECASE)
+total_cost = sum(float(c) for c in cost_match) if cost_match else 0.0
+
+# Duration
+started_m = re.search(r"Started:\s*(\S+)", content)
+duration_s = None
+if started_m:
+    import subprocess
+    try:
+        s = subprocess.check_output(["date", "-d", started_m.group(1), "+%s"], text=True).strip()
+        m = subprocess.check_output(["stat", "-c", "%Y", logfile], text=True).strip()
+        if s and m:
+            duration_s = int(m) - int(s)
+    except:
+        pass
+
+# ── Result ──
+solved = bool(re.search(r"EVENT.*SOLVED|all tests passed", content, re.IGNORECASE))
+if not solved:
+    solved = bool(re.search(r'"solved":\s*true', content, re.IGNORECASE))
+
+# ── Pipeline stages ──
+stages = []
+for m in re.finditer(r"(?:EVENT|✓|✗)\s*(.*?)(?:\n|$)", content):
+    stages.append(m.group(0).strip())
+
+# ── Agent actions ──
+actions = []
+for m in re.finditer(r"\[task-agent\] Turn (\d+)/(\d+)", content):
+    actions.append({"turn": int(m.group(1)), "maxTurns": int(m.group(2)), "type": "turn_start"})
+for m in re.finditer(r"Action:\s*(.*?)(?:\n|$)", content):
+    action = m.group(1).strip()
+    # Truncate if very long
+    if len(action) > 200:
+        action = action[:197] + "..."
+    actions.append({"type": "action", "detail": action})
+for m in re.finditer(r"Auto-finish", content):
+    actions.append({"type": "auto_finish"})
+for m in re.finditer(r"(?:ZOOM OUT|LOOP DETECTED|STAGNATION|TERMINATED|FAILURE STORM)[:\s]*(.*?)(?:\n|$)", content):
+    actions.append({"type": "termination", "reason": m.group(0).strip()})
+
+# ── LLM calls ──
+llm_calls = []
+for m in re.finditer(r"CALL #(\d+)\s+role=(\S+)\s+model=(\S+)", content):
+    llm_calls.append({"num": int(m.group(1)), "role": m.group(2), "model": m.group(3)})
+for i, m in enumerate(re.finditer(r"tokens:\s*(\d+)p\s*\+\s*(\d+)c\s*=\s*(\d+)", content)):
+    if i < len(llm_calls):
+        llm_calls[i]["promptTokens"] = int(m.group(1))
+        llm_calls[i]["completionTokens"] = int(m.group(2))
+        llm_calls[i]["totalTokens"] = int(m.group(3))
+# Cost per call
+for i, m in enumerate(re.finditer(r"cost:\s*\$?([\d.]+)", content, re.IGNORECASE)):
+    if i < len(llm_calls):
+        llm_calls[i]["cost"] = float(m.group(1))
+
+# ── Errors ──
+# Strip prompt sections like logs.sh -e does
+lines = content.split("\n")
+stripped_lines = []
+in_skip = False
+in_json_block = False
+for line in lines:
+    if line.startswith("── SYSTEM PROMPT") or line.startswith("── USER PROMPT"):
+        in_skip = True
+        continue
+    if line.startswith("── PARSED JSON"):
+        in_json_block = True
+        continue
+    if "── STATUS: OK" in line:
+        in_json_block = False
+    if "── RAW RESPONSE" in line:
+        in_skip = False
+        in_json_block = False
+    if not in_skip and not in_json_block:
+        stripped_lines.append(line)
+
+stripped = "\n".join(stripped_lines)
+errors = []
+for m in re.finditer(r"── ERROR\b.*?(?:\n|$)", stripped, re.IGNORECASE):
+    errors.append(m.group(0).strip())
+for m in re.finditer(r"(?:Error|error|Traceback|Exception)[:\s].*?(?:\n|$)", stripped):
+    err = m.group(0).strip()
+    # Filter out oracle test content
+    if "possible_failure" not in err.lower() and "fail.*mode" not in err.lower():
+        if len(err) > 200:
+            err = err[:197] + "..."
+        errors.append(err)
+
+# Deduplicate while preserving order
+seen = set()
+unique_errors = []
+for e in errors:
+    key = e[:80]
+    if key not in seen:
+        seen.add(key)
+        unique_errors.append(e)
+
+# ── Failure classification ──
+failure = None
+if re.search(r"ZOOM OUT|LOOP DETECTED|STAGNATION DETECTED|terminated.*loop|same action.*3", content, re.IGNORECASE):
+    failure = "stuck-loop"
+elif re.search(r"finish.*without.*test|finish.*before.*pass|not.*all.*pass.*finish", content, re.IGNORECASE):
+    failure = "premature-finish"
+elif re.search(r"No valid Action|invalid action|could not produce a valid|parse.*fail", content, re.IGNORECASE):
+    failure = "parse-failure"
+elif re.search(r"max.*turns|budget.*exhaust|turn.*limit|auto-finish", content, re.IGNORECASE):
+    failure = "budget-exhausted"
+elif re.search(r"TERMINATED:|FAILURE STORM", content):
+    failure = "failure-storm"
+elif re.search(r"ABORTED|supervisor.*abort", content, re.IGNORECASE):
+    failure = "supervisor-abort"
+elif re.search(r"supervisor loop exhausted|exhausted supervisor", content, re.IGNORECASE):
+    failure = "supervisor-exhausted"
+elif re.search(r"oracle.*hardening.*fail|weak oracle|broken stub", content, re.IGNORECASE):
+    failure = "oracle-hardening-failed"
+
+# All-tests-failing check
+fail_count = len(re.findall(r"FAILED.*expected|oracle.*FAIL|✗ FAILED", content, re.IGNORECASE))
+pass_count = len(re.findall(r"PASS.*expected|oracle.*PASS|✓ PASS", content, re.IGNORECASE))
+if fail_count >= 3 and pass_count == 0 and not failure:
+    failure = "all-tests-failing"
+
+# ── Oracle results ──
+oracle_results = []
+for m in re.finditer(r"oracle.*?(?:PASS|FAIL|Passed|Failed)[:\s]*(.*?)(?:\n|$)", content, re.IGNORECASE):
+    oracle_results.append(m.group(0).strip())
+
+# ── Solved by ──
+solved_by = None
+if solved:
+    for pattern, by in [
+        (r"1-shot baseline", "1-shot"),
+        (r"SOLVED.*repair", "repair"),
+        (r"SOLVED.*task-agent", "task-agent"),
+        (r"SOLVED.*supervisor", "supervisor-retry"),
+    ]:
+        if re.search(pattern, content, re.IGNORECASE):
+            solved_by = by
+            break
+
+# ── Build output ──
+output = {
+    "logFile": os.path.basename(logfile),
+    "solved": solved,
+    "solvedBy": solved_by,
+    "failure": failure,
+    "calls": calls,
+    "totalTokens": total_tokens,
+    "totalCost": round(total_cost, 6),
+    "durationSeconds": duration_s,
+    "pipelineStages": stages[-10:] if len(stages) > 10 else stages,
+    "actions": actions,
+    "llmCalls": llm_calls,
+    "errors": unique_errors[-15:],
+    "oracleResults": oracle_results[-10:],
+    "failureStats": {
+        "failCount": fail_count,
+        "passCount": pass_count,
+    },
+}
+
+print(json.dumps(output, indent=2))
+PYEOF
+    exit 0
 fi
 
 # ── Root cause ──────────────────────────────────────────────────────────────

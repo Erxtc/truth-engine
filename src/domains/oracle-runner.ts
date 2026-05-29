@@ -19,18 +19,15 @@ export function runCustomOracle(
 	artifact: Artifact,
 	domainName: string
 ) {
-	const { overallPassed, stages, finalMetrics } = (() => {
-		const rawSource = artifact.sourceCode ?? (proposal.executable.type === "code" ? proposal.executable.source : null);
-		const sourceCode = rawSource
-			? normalizeEscapes(rawSource)
-			: null;
-		if (!sourceCode) {
-			return {
-				overallPassed: false,
-				stages: [{ stageName: "CustomOracle", passed: false, reason: "No source code in artifact", runtimeMs: 0 }],
-				finalMetrics: {},
-			};
-		}
+	const rawSource = artifact.sourceCode ?? (proposal.executable.type === "code" ? proposal.executable.source : null);
+	const sourceCode = rawSource ? normalizeEscapes(rawSource) : null;
+	if (!sourceCode) {
+		return {
+			overallPassed: false,
+			stages: [{ stageName: "CustomOracle", passed: false, reason: "No source code in artifact", runtimeMs: 0 }],
+			finalMetrics: {},
+		};
+	}
 
 		const lang = proposal.executable.type === "code" ? proposal.executable.lang : "js";
 		const isPython = lang === "python";
@@ -137,7 +134,4 @@ process.stdout.write(JSON.stringify(__result));
 		} finally {
 			fs.rmSync(tmpDir, { recursive: true, force: true });
 		}
-	})();
-
-	return { overallPassed, stages, finalMetrics };
 }

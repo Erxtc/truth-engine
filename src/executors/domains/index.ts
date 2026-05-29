@@ -89,7 +89,7 @@ function pythonRunner(fileName: string, stageName: string, opts?: { timeoutMs?: 
 const projectRun: DomainRun = async (proposal, ctx) => {
 	if (proposal.executable.type === "project") return runProjectPipeline(proposal, ctx);
 	if (proposal.executable.type === "code") return verifyHtmlProject(proposal.executable.source);
-	return runProjectPipeline(proposal, ctx);
+	return failPipeline("Project domain requires code or project executable");
 };
 
 // ── Registry ─────────────────────────────────────────────────────────────────

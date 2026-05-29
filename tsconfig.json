@@ -21,10 +21,10 @@
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
 
-    // Some stricter flags (disabled by default)
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
+    // Some stricter flags
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "noPropertyAccessFromIndexSignature": false
   },
-  "exclude": ["research-node.ts", "node_modules"]
+  "exclude": ["node_modules", "src/ui/frontend"]
 }

@@ -1,1 +1,10 @@
 node_modules/
+logs/
+workspaces/
+dist/
+*.sqlite
+.env
+latest.log
+src/**/.oracle-cache.json
+src/**/.capability-state.json
+src/**/.efficiency-state.json

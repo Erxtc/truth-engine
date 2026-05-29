@@ -653,4 +653,97 @@ Example 4: proposedSolution([("search",""),("startsWith",""),("autocomplete","ne
     language: "python",
     complexity: "hard",
   },
+  // ── Real-world data: API fetch + analysis ──────────────────────────────────
+  {
+    name: "weather-cli",
+    description: `Build a Python CLI tool "weather.py" that fetches weather data and displays statistics.
+
+Usage: python3 weather.py <city> [--json]
+
+The tool must:
+1. Fetch current weather from the wttr.in API (no API key needed): GET https://wttr.in/<city>?format=j1
+2. Parse the JSON response and extract: temperature_C, humidity, wind_speed_kmph, weather_description
+3. Print a human-readable summary (default) or JSON output (--json flag)
+4. Handle errors gracefully: if the city is not found, print "City not found: <city>" and exit 1
+5. Handle network errors: print "Network error" and exit 2
+
+The wttr.in API format: {"current_condition":[{"temp_C":"15","humidity":"72","windspeedKmph":"20","weatherDesc":[{"value":"Partly cloudy"}]}]}`,
+    language: "python",
+    domain: "cli-project",
+    complexity: "simple",
+    projectTests: [
+      {
+        command: "python3 weather.py London --json",
+        expectedOutput: "temp",
+        expectedExitCode: 0,
+      },
+      {
+        command: "python3 weather.py London",
+        expectedOutput: "London",
+        expectedExitCode: 0,
+      },
+      {
+        command: "python3 weather.py NonExistentCityXYZ123",
+        expectedOutput: "not found",
+        expectedExitCode: 1,
+      },
+      {
+        command: "python3 weather.py --help",
+        expectedOutput: "weather.py",
+        expectedExitCode: 0,
+      },
+      {
+        command: "python3 weather.py",
+        expectedOutput: "usage",
+        expectedExitCode: 1,
+      },
+    ],
+  },
+  // ── Data analysis: fetch + process + report ────────────────────────────────
+  {
+    name: "crypto-stats",
+    description: `Build a Python CLI tool "crypto.py" that fetches cryptocurrency data from the CoinGecko public API and computes statistics.
+
+Usage: python3 crypto.py <coin-id> [--json]
+
+The tool must:
+1. Fetch coin data from: https://api.coingecko.com/api/v3/coins/<coin-id> (no API key required for basic usage)
+2. Parse the JSON response and extract: name, current_price (usd), market_cap (usd), price_change_percentage_24h
+3. Print a human-readable summary including all extracted fields
+4. Support --json flag for machine-readable JSON output
+5. Handle errors: if coin not found, print "Coin not found: <coin-id>" and exit 1
+6. Handle rate limiting: if the API returns 429, print "Rate limited, try again later" and exit 2
+
+CoinGecko response format: {"id":"bitcoin","name":"Bitcoin","market_data":{"current_price":{"usd":50000},"market_cap":{"usd":1000000000000},"price_change_percentage_24h":-2.5}}`,
+    language: "python",
+    domain: "cli-project",
+    complexity: "medium",
+    projectTests: [
+      {
+        command: "python3 crypto.py bitcoin --json",
+        expectedOutput: "price",
+        expectedExitCode: 0,
+      },
+      {
+        command: "python3 crypto.py bitcoin",
+        expectedOutput: "Bitcoin",
+        expectedExitCode: 0,
+      },
+      {
+        command: "python3 crypto.py nonexistentcoin999",
+        expectedOutput: "not found",
+        expectedExitCode: 1,
+      },
+      {
+        command: "python3 crypto.py --help",
+        expectedOutput: "crypto.py",
+        expectedExitCode: 0,
+      },
+      {
+        command: "python3 crypto.py",
+        expectedOutput: "usage",
+        expectedExitCode: 1,
+      },
+    ],
+  },
 ];

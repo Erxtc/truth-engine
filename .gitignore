@@ -7,4 +7,4 @@ dist/
 latest.log
 src/**/.oracle-cache.json
 src/**/.capability-state.json
-src/**/.efficiency-state.json
+src/**/.efficiency-state.json.llm-cache.json

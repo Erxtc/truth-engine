@@ -9,6 +9,10 @@
  *   bun run src/test/benchmark.ts fibonacci dijkstra     # specific problems
  *   bun run src/test/benchmark.ts --consistency          # run each problem 2x, flag flaky
  *   CONSISTENCY_RUNS=3 bun run src/test/benchmark.ts --consistency --all
+ *   bun run src/test/benchmark.ts --cross-prompt         # show per-problem across prompt versions
+ *   bun run src/test/benchmark.ts --consistency-report   # show stability per problem
+ *   bun run src/test/benchmark.ts --prompt-report        # show all prompt versions + pass rates
+ *   # Combine: bun run src/test/benchmark.ts --all --cross-prompt --consistency-report
  */
 
 import { PROBLEMS, type TestProblem } from "./benchmark-problems";
@@ -18,7 +22,7 @@ import type { ProblemEfficiency } from "../analysis/efficiency-tracker";
 import { formatMs, formatTokens, formatCost } from "../utils/format";
 import { readFileSync } from "fs";
 import { resolve, dirname } from "path";
-import { recordPromptRun, generatePromptReport } from "../analysis/prompt-version-tracker";
+import { recordPromptRun, generatePromptReport, generateCrossPromptComparison, formatCrossPromptReport, getConsistencyReport, formatConsistencyReport } from "../analysis/prompt-version-tracker";
 
 const ROOT = resolve(dirname(import.meta.filename!), "..", "..");
 
@@ -356,17 +360,38 @@ async function main() {
   const args = process.argv.slice(2);
   const { problems, label } = getProblems(args);
 
-  // Check for --prompt-report flag (can be used standalone or with other modes)
+  // Check for report flags
   const showPromptReport = args.includes("--prompt-report");
+  const showCrossPrompt = args.includes("--cross-prompt");
+  const showConsistency = args.includes("--consistency-report");
 
-  if (showPromptReport && problems.length === 0) {
-    // Standalone prompt report — no benchmarks to run, just show history
-    console.log(generatePromptReport());
+  // Detect standalone report request: user passed report flags but no
+  // problem-selection arguments (--all, --failing, --tier=, or named problems).
+  // Also check PROBLEM_FILTER env var (used for programmatic problem selection).
+  const hasProblemSelection = args.some(a =>
+    a === "--all" || a === "--failing" || a === "--consistency" || a.startsWith("--tier=") ||
+    (!a.startsWith("--") && a.length > 0)
+  ) || !!process.env.PROBLEM_FILTER;
+  const hasAnyReportFlag = showPromptReport || showCrossPrompt || showConsistency;
+
+  // Standalone reports — no benchmarks to run, just show history
+  if (hasAnyReportFlag && !hasProblemSelection) {
+    if (showPromptReport) {
+      console.log(generatePromptReport());
+    }
+    if (showCrossPrompt) {
+      const cross = generateCrossPromptComparison();
+      console.log(formatCrossPromptReport(cross));
+    }
+    if (showConsistency) {
+      const consistency = getConsistencyReport();
+      console.log(formatConsistencyReport(consistency));
+    }
     return;
   }
 
-  if (problems.length === 0) {
-    console.log("No problems to run.");
+  if (problems.length === 0 && !hasAnyReportFlag) {
+    console.log("No problems to run. Use --prompt-report, --cross-prompt, or --consistency-report for history, or specify problems to run.");
     return;
   }
 
@@ -377,7 +402,21 @@ async function main() {
     await runBenchmark(problems, label);
   }
 
-  // Show prompt report after benchmark if requested
+  // ── Post-benchmark reports ──
+
+  // Cross-prompt: show how each problem performed under different prompt versions
+  if (showCrossPrompt) {
+    const cross = generateCrossPromptComparison(problems.map(p => p.name));
+    console.log("\n" + formatCrossPromptReport(cross));
+  }
+
+  // Consistency: show per-problem stability across runs
+  if (showConsistency) {
+    const consistency = getConsistencyReport();
+    console.log("\n" + formatConsistencyReport(consistency));
+  }
+
+  // Full prompt report (versions, pass rates, cross-version comparison)
   if (showPromptReport) {
     console.log("\n" + generatePromptReport());
   }

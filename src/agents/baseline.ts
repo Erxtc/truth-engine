@@ -10,6 +10,7 @@ import type { Proposal, WorkingContext, ExecutionResult } from "../core/types";
 import type { Artifact } from "../db/schema";
 import { validateAndFixPython } from "../utils/code-validator";
 import { normalizeEscapes } from "../utils/general";
+import { createHash } from "crypto";
 
 const baselineSchema = v.object({
 	code: v.string(),
@@ -25,6 +26,8 @@ export interface BaselineResult {
 	reason: string;
 	durationMs: number;
 	llmMs: number;
+	/** Hash of the baseline system prompt (for prompt version tracking) */
+	systemPromptHash: string;
 	/** Structured per-test failure detail surfaced to the repair agent. */
 	failureDetail?: ExecutionResult["failureDetail"];
 }
@@ -73,6 +76,9 @@ Return ONLY valid JSON:
   "explanation": "<one sentence>"
 }`.trim();
 
+	// Hash for prompt version tracking
+	const systemPromptHash = createHash("sha256").update(prompt).digest("hex").slice(0, 16);
+
 	let code = "";
 	let lang: "python" | "js" = language;
 	let explanation = "";
@@ -99,6 +105,7 @@ Return ONLY valid JSON:
 			reason: `LLM error: ${err instanceof Error ? err.message.slice(0, 100) : String(err)}`,
 			durationMs: Date.now() - t0,
 			llmMs: 0,
+			systemPromptHash,
 		};
 	}
 
@@ -176,5 +183,5 @@ Return ONLY valid JSON:
 		reason = `oracle-error: ${err instanceof Error ? err.message.slice(0, 100) : String(err)}`;
 	}
 
-	return { code, language: lang, explanation, passed, reason, durationMs: Date.now() - t0, llmMs, failureDetail };
+	return { code, language: lang, explanation, passed, reason, durationMs: Date.now() - t0, llmMs, systemPromptHash, failureDetail };
 }

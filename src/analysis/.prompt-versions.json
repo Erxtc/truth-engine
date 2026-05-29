@@ -38,6 +38,33 @@
         "tokens": 0,
         "solvedBy": "task-agent"
       }
+    ],
+    "a6db4d84d5119aa7": [
+      {
+        "timestamp": "2026-05-29T23:39:22.808Z",
+        "problem": "trie-autocomplete",
+        "systemPrompt": "[hash: ef739beb0112ae73]",
+        "userPrompt": "Write proposedSolution(operations) implementing a Trie (prefix tree) with insert, search, startsWith, and autocomplete operations. operations is a list of tuples: (\"insert\", word), (\"search\", word), (\"startsWith\", prefix), (\"autocomplete\", prefix). All words are lowercase a-z strings.\n\n- \"insert\": insert word into the trie. Return None.\n- \"search\": return True if word exists in the trie (was inserted exactly), False otherwise.\n- \"startsWith\": return True if any word in the trie starts with the given prefix, False otherwise.\n- \"autocomplete\": return a sorted list of all words in the trie that have the given prefix, up to a maximum of 5 results. Return empty list if no matches.\n\nReturn a list of results (one per operation).\n\nExample 1: proposedSolution([(\"insert\",\"apple\"),(\"search\",\"apple\"),(\"search\",\"app\"),(\"startsWith\",\"app\"),(\"insert\",\"app\"),(\"search\",\"app\")]) → [None, True, False, True, None, True]\nExample 2: proposedSolution([(\"insert\",\"bat\"),(\"insert\",\"ball\"),(\"insert\",\"bark\"),(\"autocomplete\",\"ba\")]) → [None, None, None, [\"ball\",\"bark\"]] (max 5, sorted)\nExample 3: proposedSolution([(\"insert\",\"a\"),(\"insert\",\"aa\"),(\"insert\",\"aaa\"),(\"autocomplete\",\"a\")]) → [None, None, None, [\"a\",\"aa\",\"aaa\"]]\nExample 4: proposedSolution([(\"search\",\"\"),(\"startsWith\",\"\"),(\"autocomplete\",\"never\")]) → [False, False, []]",
+        "complexity": "hard",
+        "passed": true,
+        "calls": 15,
+        "tokens": 0,
+        "solvedBy": "task-agent"
+      }
+    ],
+    "b6ef47db01459490": [
+      {
+        "timestamp": "2026-05-29T23:43:54.370Z",
+        "problem": "fibonacci",
+        "systemPromptHash": "b76d09cc46b7711f",
+        "systemPromptPreview": "[hash: b76d09cc46b7711f]",
+        "userPrompt": "Write proposedSolution(n) returning the nth Fibonacci number (fib(0)=0, fib(1)=1). n is a non-negative integer.",
+        "complexity": "trivial",
+        "passed": true,
+        "calls": 2,
+        "tokens": 504,
+        "solvedBy": "1-shot"
+      }
     ]
   },
   "summaries": {
@@ -91,8 +118,42 @@
         }
       },
       "passRate": 1
+    },
+    "a6db4d84d5119aa7": {
+      "hash": "a6db4d84d5119aa7",
+      "firstSeen": "2026-05-29T23:39:22.808Z",
+      "lastSeen": "2026-05-29T23:39:22.808Z",
+      "totalUses": 1,
+      "uniqueProblems": 1,
+      "problemResults": {
+        "trie-autocomplete": {
+          "passes": 1,
+          "failures": 0,
+          "totalCalls": 15,
+          "totalTokens": 0,
+          "lastPassed": true
+        }
+      },
+      "passRate": 1
+    },
+    "b6ef47db01459490": {
+      "hash": "b6ef47db01459490",
+      "firstSeen": "2026-05-29T23:43:54.370Z",
+      "lastSeen": "2026-05-29T23:43:54.370Z",
+      "totalUses": 1,
+      "uniqueProblems": 1,
+      "problemResults": {
+        "fibonacci": {
+          "passes": 1,
+          "failures": 0,
+          "totalCalls": 2,
+          "totalTokens": 504,
+          "lastPassed": true
+        }
+      },
+      "passRate": 1
     }
   },
   "currentHash": null,
-  "updatedAt": "2026-05-29T23:27:14.562Z"
+  "updatedAt": "2026-05-29T23:43:54.370Z"
 }

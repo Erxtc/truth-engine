@@ -133,6 +133,7 @@ interface RunOutcome {
   totalCalls: number;
   domain: string;
   description: string;
+  systemPromptHash: string;
 }
 
 /** Shared supervisor retry loop — runs up to 2 iterations of supervisor-guided
@@ -278,7 +279,7 @@ async function main() {
   const complexity = cfg.problemComplexity || "medium";
   const health = new HealthMonitor();
 
-  const outcome: RunOutcome = { solved: false, solvedBy: "pipeline", totalCalls: 0, domain: "", description: problem.slice(0, 120) };
+  const outcome: RunOutcome = { solved: false, solvedBy: "pipeline", totalCalls: 0, domain: "", description: problem.slice(0, 120), systemPromptHash: "" };
   let finalSolutionCode = "";
   let oracleHash = "";
   let systemPromptHash = "";
@@ -444,6 +445,7 @@ async function main() {
   const baselineLang: "python" | "js" = (cfg.problemLanguage === "js" || cfg.problemLanguage === "javascript") ? "js" : "python";
   const baselineResult = await runBaseline(problem, spec, baselineLang, oracleSource || undefined);
   totalCalls++;
+  systemPromptHash = baselineResult.systemPromptHash || systemPromptHash;
   console.log(`   ${baselineResult.passed ? "PASS" : "FAIL"} | ${baselineResult.durationMs}ms | ${baselineResult.reason.slice(0, 120)}`);
 
   if (baselineResult.passed) {

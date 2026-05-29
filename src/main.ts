@@ -9,7 +9,7 @@
  */
 
 import { RESTORE_INF_JS, pythonRunnerSource } from "./utils/general";
-import { logEvent } from "./utils/prompt-logger";
+import { logEvent, finalizeLog } from "./utils/prompt-logger";
 import { loadConfig } from "./cli";
 import { detectOrGenerateDomain } from "./domains/auto-detect";
 import { getDomainSpec } from "./executors/domains/registry";
@@ -157,6 +157,7 @@ async function runSupervisorLoop(params: {
 }): Promise<{ solved: boolean; callsSpent: number }> {
     const { domain, problem, domainType, health, setupFiles, enableWebSearch, maxTurns, label, handleEscalate, domainInvariants, oracleContent, problemLanguage, referenceData } = params;
     let callsSpent = 0;
+    let systemPromptHash = "";
     let maxDepth = params.maxDepth ?? 3;
     let maxBranches = params.maxBranches ?? 2;
     const runParams: RunParams = {
@@ -222,6 +223,7 @@ async function runSupervisorLoop(params: {
             workflow: problemLanguage ? { language: problemLanguage } : undefined,
         });
         callsSpent += retryResult.turns;
+        systemPromptHash = retryResult.systemPromptHash || systemPromptHash;
 
         if (retryResult.success) {
             health.record(100, true, "supervisor-retry");
@@ -279,6 +281,7 @@ async function main() {
   const outcome: RunOutcome = { solved: false, solvedBy: "pipeline", totalCalls: 0, domain: "", description: problem.slice(0, 120) };
   let finalSolutionCode = "";
   let oracleHash = "";
+  let systemPromptHash = "";
   function hash(s: string): string { return createHash("sha256").update(s).digest("hex").slice(0, 16); }
 
   let _outcomeRecorded = false;
@@ -298,8 +301,9 @@ async function main() {
       });
     }
   };
-  process.on("exit", _recordOutcome);
-  process.on("SIGINT", () => { _recordOutcome(); process.exit(0); });
+  process.on("exit", () => { _recordOutcome(); finalizeLog(); });
+  process.on("SIGINT", () => { _recordOutcome(); finalizeLog(); process.exit(0); });
+  process.on("SIGTERM", () => { _recordOutcome(); finalizeLog(); process.exit(0); });
 
   function solved(by: string): void {
     outcome.solved = true;
@@ -391,6 +395,7 @@ async function main() {
     });
 
     totalCalls += taskResult.turns;
+    systemPromptHash = taskResult.systemPromptHash || systemPromptHash;
 
     if (taskResult.success) {
       console.log(`\n✓ SOLVED by task-agent (${taskResult.turns} turns, ${totalCalls} total LLM calls)`);
@@ -550,6 +555,7 @@ async function main() {
   });
 
   totalCalls += taskResult.turns;
+  systemPromptHash = taskResult.systemPromptHash || systemPromptHash;
 
   if (taskResult.success) {
     console.log(`\n✓ SOLVED by task-agent (${taskResult.turns} turns, ${totalCalls} total LLM calls)`);
@@ -604,7 +610,7 @@ async function main() {
   } finally {
     // ── Structured result for programmatic consumers (benchmark, agents) ──────
     const solutionHash = finalSolutionCode ? hash(finalSolutionCode) : "";
-    console.log(`\n${JSON.stringify({ result: { solved: outcome.solved, solvedBy: outcome.solvedBy, totalCalls: outcome.totalCalls, domain: outcome.domain, description: outcome.description.slice(0, 200), modelTier, oracleHash, solutionHash } })}`);
+    console.log(`\n${JSON.stringify({ result: { solved: outcome.solved, solvedBy: outcome.solvedBy, totalCalls: outcome.totalCalls, domain: outcome.domain, description: outcome.description.slice(0, 200), modelTier, oracleHash, solutionHash, systemPromptHash } })}`);
   }
 }
 

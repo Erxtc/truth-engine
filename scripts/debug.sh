@@ -412,21 +412,28 @@ if [[ "$MODE" == "timeline" || "$MODE" == "full" || "$MODE" == "actions" ]]; the
     # Self-termination
     if grep -qi "TERMINATED:\|FAILURE STORM\|LOOP DETECTED:\|STAGNATION DETECTED:\|ERROR LOOP" "$FILE" 2>/dev/null; then
         REASON=$(grep -i "TERMINATED:\|FAILURE STORM\|LOOP DETECTED:\|STAGNATION DETECTED:\|ERROR LOOP" "$FILE" 2>/dev/null | tail -1)
-        echo "  🔴 SELF-TERMINATED: $REASON"
+        echo "  🔴 STUCK LOOP: $REASON"
         echo "     → Model repeated same actions without progress"
-        echo "     → Fix: simplify workflow, check if oracle/commands are working"
+        echo "     → CHECK: Run 'node oracle.js solution.py' — is the oracle working?"
+        echo "     → CHECK: Are error messages actionable? Can the model understand them?"
+        echo "     → FIX: Simplify the workflow; add domain knowledge to prompt; reduce complexity"
+        echo "     → FIX: Check if the model is receiving the oracle output correctly"
     fi
 
     # Supervisor abort
     if grep -qi "ABORTED\|supervisor.*abort" "$FILE" 2>/dev/null; then
         echo "  🟡 SUPERVISOR ABORT: model couldn't make progress"
-        echo "     → Try different problem formulation or domain"
+        echo "     → CHECK: Read the oracle errors — what did the model get wrong?"
+        echo "     → FIX: Try different problem formulation, domain, or add domain invariants"
+        echo "     → FIX: The problem may need domain-specific knowledge in the prompt"
     fi
 
     # Supervisor exhausted
     if grep -qi "supervisor loop exhausted\|exhausted supervisor" "$FILE" 2>/dev/null; then
         echo "  🟡 SUPERVISOR EXHAUSTED: 2 retry iterations, neither passed"
-        echo "     → Check specific oracle failures to understand what went wrong"
+        echo "     → CHECK: Specific oracle failures — is the model getting closer or further?"
+        echo "     → FIX: If getting closer, increase retry iterations"
+        echo "     → FIX: If oscillating, the supervisor needs better direction hints"
     fi
 
     # Stub output
@@ -435,17 +442,25 @@ if [[ "$MODE" == "timeline" || "$MODE" == "full" || "$MODE" == "actions" ]]; the
     if [[ "$FAIL_COUNT" -ge 3 && "$PASS_COUNT" -eq 0 ]]; then
         echo "  🟡 ALL TESTS FAILING: $FAIL_COUNT failures, 0 passes"
         echo "     → Likely stub output (return 0/None/[]) or wrong function signature"
+        echo "     → CHECK: What does the model's code actually return?"
+        echo "     → FIX: Harden the oracle to reject trivial returns (0, None, [], '')"
+        echo "     → FIX: Check if the function signature matches what the oracle expects"
     fi
 
     # Premature finish
     if grep -qi "finish.*without.*test\|finish.*before.*pass\|not.*all.*pass.*finish" "$FILE" 2>/dev/null; then
         echo "  🟡 PREMATURE FINISH: called finish() before verification passed"
+        echo "     → FIX: Prompt must explicitly say 'MUST see all tests pass before finish()'"
+        echo "     → FIX: Add a guard that rejects finish() when oracle hasn't been run"
     fi
 
     # Parse failures
     PARSE=$(grep -ci "No valid Action\|invalid action\|could not produce a valid" "$FILE" 2>/dev/null || echo "0")
     if [[ "$PARSE" -ge 1 ]]; then
         echo "  🟡 PARSE FAILURE: $PARSE time(s) — model output couldn't be parsed"
+        echo "     → CHECK: Did the model output bold/code-fence wrapped actions? (parser handles these)"
+        echo "     → FIX: Check task-agent-prompt.ts — is the action format clear and unambiguous?"
+        echo "     → FIX: Add action format examples to the system prompt"
     fi
 fi
 

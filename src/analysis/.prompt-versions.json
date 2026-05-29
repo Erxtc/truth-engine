@@ -1,0 +1,98 @@
+{
+  "runs": {
+    "c61ea3b9cdfe828e": [
+      {
+        "timestamp": "2026-05-29T23:26:40.133Z",
+        "problem": "gaussian-elimination",
+        "systemPrompt": "[hash: 22863f223eb48ca4]",
+        "userPrompt": "Write proposedSolution(A, b) that solves Ax=b using Gaussian elimination with partial pivoting. A is n×n (list of lists), b is list of length n. Return solution x as list.\n\nExample 1: proposedSolution([[2,1],[1,-1]], [5,1]) → [2, 1] because 2x+y=5, x-y=1\nExample 2: proposedSolution([[3,2],[1,4]], [7,9]) → [1, 2] because 3x+2y=7, x+4y=9\nExample 3: proposedSolution([[1,2,3],[2,3,1],[3,1,2]], [14,11,11]) → [1, 2, 3]",
+        "complexity": "hard",
+        "passed": false,
+        "calls": 4,
+        "tokens": 0,
+        "solvedBy": "pipeline"
+      }
+    ],
+    "e4820866f5b7e7d2": [
+      {
+        "timestamp": "2026-05-29T23:26:58.563Z",
+        "problem": "dijkstra-shortest-path",
+        "systemPrompt": "[hash: 8d4e8ae774229bbe]",
+        "userPrompt": "Write proposedSolution(graph, start, target) implementing Dijkstra's shortest path algorithm. graph is a dict mapping node → list of (neighbor, weight) tuples. All weights are non-negative. Return (distance, path) where distance is the shortest distance, and path is the list of nodes [start, ..., target]. If no path exists, return (None, None).\n\nExample 1: proposedSolution({\"A\":[(\"B\",4),(\"C\",2)], \"B\":[(\"A\",4),(\"D\",5)], \"C\":[(\"A\",2),(\"B\",1),(\"D\",8),(\"E\",10)], \"D\":[(\"B\",5),(\"C\",8),(\"E\",2)], \"E\":[(\"C\",10),(\"D\",2)]}, \"A\", \"E\") → (10, [\"A\", \"C\", \"B\", \"D\", \"E\"])\nExample 2: proposedSolution({\"A\":[(\"B\",1)], \"B\":[(\"A\",1)]}, \"A\", \"B\") → (1, [\"A\", \"B\"])\nExample 3: proposedSolution({\"A\":[(\"B\",1)], \"B\":[(\"A\",1)], \"C\":[(\"D\",1)], \"D\":[(\"C\",1)]}, \"A\", \"D\") → (None, None)",
+        "complexity": "hard",
+        "passed": false,
+        "calls": 4,
+        "tokens": 0,
+        "solvedBy": "pipeline"
+      }
+    ],
+    "f0995f77b0a7b829": [
+      {
+        "timestamp": "2026-05-29T23:27:14.562Z",
+        "problem": "topological-sort",
+        "systemPrompt": "[hash: d1234411da43a162]",
+        "userPrompt": "Write proposedSolution(graph) that performs topological sort on a DAG using Kahn's algorithm. graph is a dict of node → list of neighbors. Return list of nodes in topological order. Assume graph is a valid DAG (no cycles).\n\nExample 1: proposedSolution({\"A\":[\"B\",\"C\"], \"B\":[\"D\"], \"C\":[\"D\"], \"D\":[]}) → [\"A\", \"B\", \"C\", \"D\"] or [\"A\", \"C\", \"B\", \"D\"]\nExample 2: proposedSolution({\"5\":[\"2\",\"0\"], \"4\":[\"0\",\"1\"], \"2\":[\"3\"], \"3\":[\"1\"], \"1\":[], \"0\":[]}) → Any valid topological order\nExample 3: proposedSolution({\"A\":[], \"B\":[], \"C\":[]}) → Any permutation of A, B, C",
+        "complexity": "hard",
+        "passed": true,
+        "calls": 10,
+        "tokens": 0,
+        "solvedBy": "task-agent"
+      }
+    ]
+  },
+  "summaries": {
+    "c61ea3b9cdfe828e": {
+      "hash": "c61ea3b9cdfe828e",
+      "firstSeen": "2026-05-29T23:26:40.133Z",
+      "lastSeen": "2026-05-29T23:26:40.133Z",
+      "totalUses": 1,
+      "uniqueProblems": 1,
+      "problemResults": {
+        "gaussian-elimination": {
+          "passes": 0,
+          "failures": 1,
+          "totalCalls": 4,
+          "totalTokens": 0,
+          "lastPassed": false
+        }
+      },
+      "passRate": 0
+    },
+    "e4820866f5b7e7d2": {
+      "hash": "e4820866f5b7e7d2",
+      "firstSeen": "2026-05-29T23:26:58.563Z",
+      "lastSeen": "2026-05-29T23:26:58.563Z",
+      "totalUses": 1,
+      "uniqueProblems": 1,
+      "problemResults": {
+        "dijkstra-shortest-path": {
+          "passes": 0,
+          "failures": 1,
+          "totalCalls": 4,
+          "totalTokens": 0,
+          "lastPassed": false
+        }
+      },
+      "passRate": 0
+    },
+    "f0995f77b0a7b829": {
+      "hash": "f0995f77b0a7b829",
+      "firstSeen": "2026-05-29T23:27:14.562Z",
+      "lastSeen": "2026-05-29T23:27:14.562Z",
+      "totalUses": 1,
+      "uniqueProblems": 1,
+      "problemResults": {
+        "topological-sort": {
+          "passes": 1,
+          "failures": 0,
+          "totalCalls": 10,
+          "totalTokens": 0,
+          "lastPassed": true
+        }
+      },
+      "passRate": 1
+    }
+  },
+  "currentHash": null,
+  "updatedAt": "2026-05-29T23:27:14.562Z"
+}

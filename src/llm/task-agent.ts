@@ -10,6 +10,7 @@
  * decides what to do next based on what it observes.
  */
 
+import { createHash } from "crypto";
 import { queryDeepseekRaw, queryRawReasoning } from "./index";
 import { Sandbox } from "../executors/sandbox/index";
 import { searchWeb, formatSearchResults, fetchWebPage, formatFetchResult } from "./web-search";
@@ -128,6 +129,8 @@ export interface TaskAgentResult {
   /** Concise summary of what the agent tried — tools used, errors seen, final state.
    *  Feeds the supervisor so it can give specific, actionable guidance. */
   turnSummary: string;
+  /** Hash of the system prompt used (for prompt version tracking) */
+  systemPromptHash?: string;
 }
 
 interface ToolCall {
@@ -773,6 +776,7 @@ export async function runTaskAgent(
     supervisorHint: cfg.supervisorHint,
     previousAttemptSummary: cfg.previousAttemptSummary,
   });
+  const systemPromptHash: string = createHash("sha256").update(systemPrompt).digest("hex").slice(0, 16);
 
   // Build the first user message — include oracle content if available so the
   // model knows the test cases without spending a turn on read_file("oracle.js").
@@ -1045,6 +1049,7 @@ export async function runTaskAgent(
       turns: messages.filter(m => m.role === "assistant").length,
       transcript: transcript.join("\n"),
       turnSummary,
+      systemPromptHash,
     };
   } finally {
     if (cfg.persistentWorkspace) {

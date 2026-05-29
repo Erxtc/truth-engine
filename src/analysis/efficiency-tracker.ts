@@ -20,11 +20,16 @@ export interface ProblemEfficiency {
   baselineCalls: number;
   llmAloneCalls: number;
   passed: boolean;
+  solvedBy?: string;
+  /** Hash of the system prompt used for this problem (for prompt version tracking) */
+  promptHash?: string;
 }
 
 export interface EfficiencySnapshot {
   timestamp: string;
   commit?: string;
+  /** System prompt hash used in this benchmark run (all problems share same prompt) */
+  promptHash?: string;
   problems: ProblemEfficiency[];
   totalProblems: number;
   totalPipelineCalls: number;
@@ -94,9 +99,13 @@ export function recordEfficiency(problems: ProblemEfficiency[]): EfficiencyDiff 
   const totalTokens = problems.reduce((s, p) => s + (p.pipelineTokens || 0), 0);
   const totalCost = problems.reduce((s, p) => s + (p.pipelineCost || 0), 0);
 
+  // Detect the prompt hash from the first problem that has one
+  const promptHash = problems.find(p => p.promptHash)?.promptHash;
+
   const snapshot: EfficiencySnapshot = {
     timestamp: new Date().toISOString(),
     commit: getGitCommit(),
+    promptHash,
     problems,
     totalProblems: problems.length,
     totalPipelineCalls: totalCalls,

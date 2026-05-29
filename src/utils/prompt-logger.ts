@@ -54,6 +54,7 @@ function rotateLogs(logsDir: string): void {
         };
         rotateFiles("truth-engine-", ".log", 50);
         rotateFiles("truth-engine-", ".full.log", 50);
+        rotateFiles("truth-engine-", ".meta.json", 50);
     } catch {}
 }
 
@@ -174,4 +175,197 @@ export function logLlmResult(_callNum: number, result: LlmResultLog) {
     }
 
     append(block);
+}
+
+// ── Structured metadata sidecar (.meta.json) ──────────────────────────────────
+// Generated once at the end of each run so scripts can read O(1) JSON
+// instead of O(n) grep-scanning the full log.
+
+export interface LogMetadata {
+    logFile: string;
+    calls: number;
+    totalTokens: number;
+    totalPromptTokens: number;
+    totalCompletionTokens: number;
+    totalCost: number;
+    result: "PASS" | "FAIL" | "UNKNOWN";
+    failureClassification: string | null;
+    durationSeconds: number | null;
+    oracleResults: string[];
+    errors: string[];
+    agentActions: string[];
+    pipelineStages: string[];
+    callsDetail: Array<{
+        num: number;
+        role: string;
+        model: string;
+        promptTokens: number;
+        completionTokens: number;
+        totalTokens: number;
+        cost: number;
+    }>;
+}
+
+/** Generate a .meta.json sidecar from the completed log file.
+ *  Called at process exit — does a single O(n) scan, then scripts
+ *  get O(1) reads forever after. */
+export function finalizeLog(): void {
+    const p = getLogPath();
+    if (!p) return;
+    try {
+        const content = fs.readFileSync(p, "utf-8");
+
+        // ── Basic stats ──
+        const calls = (content.match(/── RAW RESPONSE/g) || []).length;
+
+        const tokenMatches = content.match(/tokens:\s*(\d+)p\s*\+\s*(\d+)c\s*=\s*(\d+)/g);
+        let totalTokens = 0, totalPromptTokens = 0, totalCompletionTokens = 0;
+        if (tokenMatches) {
+            for (const m of tokenMatches) {
+                const pm = m.match(/(\d+)p/);
+                const cm = m.match(/(\d+)c/);
+                const tm = m.match(/=\s*(\d+)/);
+                if (pm) totalPromptTokens += parseInt(pm[1]!);
+                if (cm) totalCompletionTokens += parseInt(cm[1]!);
+                if (tm) totalTokens += parseInt(tm[1]!);
+            }
+        }
+
+        const costMatches = content.match(/cost:\s*\$([\d.]+)/g);
+        let totalCost = 0;
+        if (costMatches) {
+            for (const m of costMatches) {
+                const val = parseFloat(m.match(/\$([\d.]+)/)?.[1] ?? "0");
+                if (!isNaN(val)) totalCost += val;
+            }
+        }
+
+        // ── Result ──
+        let result: "PASS" | "FAIL" | "UNKNOWN" = "UNKNOWN";
+        if (/EVENT.*(?:✓ SOLVED|PROBLEM SOLVED|PASS:)/i.test(content) ||
+            /"solved":\s*true/i.test(content) ||
+            /all tests passed/i.test(content)) {
+            result = "PASS";
+        } else if (/EVENT.*(?:✗ FAILED|killed|ABORT)/i.test(content) ||
+                   /"solved":\s*false/i.test(content)) {
+            result = "FAIL";
+        }
+
+        // ── Duration ──
+        let durationSeconds: number | null = null;
+        const startedMatch = content.match(/Started:\s*(\S+)/);
+        if (startedMatch) {
+            const logStat = fs.statSync(p);
+            const logMtime = Math.floor(logStat.mtimeMs / 1000);
+            const startDate = new Date(startedMatch[1]!);
+            if (!isNaN(startDate.getTime())) {
+                durationSeconds = logMtime - Math.floor(startDate.getTime() / 1000);
+            }
+        }
+
+        // ── Failure classification ──
+        let failureClassification: string | null = null;
+        if (result !== "PASS") {
+            if (/ZOOM OUT|LOOP DETECTED|STAGNATION DETECTED|terminated.*loop|same action.*3/i.test(content))
+                failureClassification = "stuck-loop";
+            else if (/finish.*without.*test|finish.*before.*pass|not.*all.*pass.*finish/i.test(content))
+                failureClassification = "premature-finish";
+            else if (/No valid Action|invalid action|could not produce a valid|parse.*fail/i.test(content))
+                failureClassification = "parse-failure";
+            else if (/max.*turns|budget.*exhaust|turn.*limit|auto-finish/i.test(content))
+                failureClassification = "budget-exhausted";
+            else if (/TERMINATED:|FAILURE STORM/i.test(content))
+                failureClassification = "failure-storm";
+            else if (/ABORTED|supervisor.*abort/i.test(content))
+                failureClassification = "supervisor-abort";
+            else if (/supervisor loop exhausted|exhausted supervisor/i.test(content))
+                failureClassification = "supervisor-exhausted";
+            else if (/oracle.*hardening.*fail|weak oracle|broken stub/i.test(content))
+                failureClassification = "oracle-hardening-failed";
+            const failCount = (content.match(/FAILED.*expected|oracle.*FAIL|✗ FAILED/gi) || []).length;
+            const passCount = (content.match(/PASS.*expected|oracle.*PASS|✓ PASS/gi) || []).length;
+            if (failCount >= 3 && passCount === 0 && !failureClassification)
+                failureClassification = "all-tests-failing";
+        }
+
+        // ── Strip prompt/PARSED JSON sections for error extraction ──
+        const strippedLines: string[] = [];
+        let inSkip = false, inJson = false;
+        for (const line of content.split("\n")) {
+            if (line.startsWith("── SYSTEM PROMPT") || line.startsWith("── USER PROMPT")) { inSkip = true; continue; }
+            if (line.startsWith("── PARSED JSON")) { inJson = true; continue; }
+            if (line.includes("── STATUS: OK")) { inJson = false; }
+            if (line.startsWith("── RAW RESPONSE")) { inSkip = false; inJson = false; }
+            if (!inSkip && !inJson) strippedLines.push(line);
+        }
+        const stripped = strippedLines.join("\n");
+
+        const errors: string[] = [];
+        for (const m of stripped.matchAll(/── ERROR\b.*/gi)) errors.push(m[0].trim());
+        for (const m of stripped.matchAll(/(?:Error|error|Traceback|Exception)[:\s].*/g)) {
+            if (!/possible_failure|fail.*mode/i.test(m[0])) errors.push(m[0].trim());
+        }
+
+        const oracleResults: string[] = [];
+        for (const m of content.matchAll(/oracle.*?(?:PASS|FAIL|Passed|Failed)[:\s].*/gi)) {
+            oracleResults.push(m[0].trim());
+        }
+
+        const agentActions: string[] = [];
+        for (const m of content.matchAll(/\[task-agent\] Turn (\d+)\/(\d+)/g)) {
+            agentActions.push(`Turn ${m[1]}/${m[2]}`);
+        }
+        for (const m of content.matchAll(/Action:\s*(.*)/g)) {
+            agentActions.push(`→ ${(m[1] ?? "").trim().slice(0, 150)}`);
+        }
+        for (const m of content.matchAll(/(?:ZOOM OUT|LOOP DETECTED|STAGNATION|TERMINATED|FAILURE STORM)[:\s].*/gi)) {
+            agentActions.push(`🔴 ${m[0].trim()}`);
+        }
+
+        const pipelineStages: string[] = [];
+        for (const m of content.matchAll(/EVENT\s+(.*)/gi)) {
+            pipelineStages.push((m[1] ?? "").trim());
+        }
+
+        const callsDetail: LogMetadata["callsDetail"] = [];
+        const callRoles: Array<{ num: number; role: string; model: string }> = [];
+        for (const m of content.matchAll(/CALL #(\d+)\s+role=(\S+)\s+model=(\S+)/g)) {
+            callRoles.push({ num: parseInt(m[1]!), role: m[2]!, model: m[3]! });
+        }
+        const tokenMatches2 = [...content.matchAll(/tokens:\s*(\d+)p\s*\+\s*(\d+)c\s*=\s*(\d+)/g)];
+        const costMatches2 = [...content.matchAll(/cost:\s*\$([\d.]+)/g)];
+        for (let i = 0; i < callRoles.length; i++) {
+            callsDetail.push({
+                num: callRoles[i]!.num,
+                role: callRoles[i]!.role,
+                model: callRoles[i]!.model,
+                promptTokens: tokenMatches2[i] ? parseInt(tokenMatches2[i]![1]!) : 0,
+                completionTokens: tokenMatches2[i] ? parseInt(tokenMatches2[i]![2]!) : 0,
+                totalTokens: tokenMatches2[i] ? parseInt(tokenMatches2[i]![3]!) : 0,
+                cost: costMatches2[i] ? parseFloat(costMatches2[i]![1]!) : 0,
+            });
+        }
+
+        const meta: LogMetadata = {
+            logFile: path.basename(p),
+            calls,
+            totalTokens,
+            totalPromptTokens,
+            totalCompletionTokens,
+            totalCost: Math.round(totalCost * 1000000) / 1000000,
+            result,
+            failureClassification,
+            durationSeconds,
+            oracleResults: oracleResults.slice(-10),
+            errors: errors.slice(-20),
+            agentActions,
+            pipelineStages: pipelineStages.slice(-10),
+            callsDetail,
+        };
+
+        const metaPath = p.replace(/\.log$/, ".meta.json");
+        fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+    } catch (_err) {
+        // Never crash — metadata is best-effort
+    }
 }

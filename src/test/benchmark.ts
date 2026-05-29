@@ -18,6 +18,7 @@ import type { ProblemEfficiency } from "../analysis/efficiency-tracker";
 import { formatMs, formatTokens, formatCost } from "../utils/format";
 import { readFileSync } from "fs";
 import { resolve, dirname } from "path";
+import { recordPromptRun, generatePromptReport } from "../analysis/prompt-version-tracker";
 
 const ROOT = resolve(dirname(import.meta.filename!), "..", "..");
 
@@ -66,7 +67,7 @@ function totalCost(logPath: string): number {
   }
 }
 
-function runPipeline(problem: TestProblem): { passed: boolean; calls: number; tokens: number; cost: number; durationMs: number } {
+function runPipeline(problem: TestProblem): { passed: boolean; calls: number; tokens: number; cost: number; durationMs: number; solvedBy: string; systemPromptHash: string } {
   const domain = problem.domain || "auto";
   const projectTestsJson = problem.projectTests ? JSON.stringify(problem.projectTests) : "";
   const langEnv = problem.language ? `PROBLEM_LANGUAGE=${problem.language}` : "";
@@ -81,12 +82,16 @@ function runPipeline(problem: TestProblem): { passed: boolean; calls: number; to
     // Parse structured result from stdout (most reliable — doesn't depend on log files)
     let passed = false;
     let jsonCalls = 0;
+    let solvedBy = "unknown";
+    let systemPromptHash = "";
     const resultLine = output.split("\n").find(l => l.includes('"result"'));
     if (resultLine) {
       try {
         const parsed = JSON.parse(resultLine.trim());
         passed = parsed.result?.solved === true;
         jsonCalls = parsed.result?.totalCalls ?? 0;
+        solvedBy = parsed.result?.solvedBy ?? "unknown";
+        systemPromptHash = parsed.result?.systemPromptHash ?? "";
       } catch { /* fall through */ }
     }
     if (!resultLine) {
@@ -99,13 +104,13 @@ function runPipeline(problem: TestProblem): { passed: boolean; calls: number; to
     const tokens = log ? totalTokens(log) : 0;
     const cost = log ? totalCost(log) : 0;
 
-    return { passed, calls, tokens, cost, durationMs: duration };
+    return { passed, calls, tokens, cost, durationMs: duration, solvedBy, systemPromptHash };
   } catch (err: any) {
     const log = lastLogPath();
     const calls = log ? countCalls(log) : 0;
     const tokens = log ? totalTokens(log) : 0;
     const cost = log ? totalCost(log) : 0;
-    return { passed: false, calls, tokens, cost, durationMs: 0 };
+    return { passed: false, calls, tokens, cost, durationMs: 0, solvedBy: "crash", systemPromptHash: "" };
   }
 }
 
@@ -272,9 +277,27 @@ async function runBenchmark(problems: TestProblem[], label: string): Promise<voi
 
     const pl = runPipeline(p);
     const costStr = pl.cost > 0 ? `  ${formatCost(pl.cost)}` : '';
-    console.log(`  ${pl.passed ? "PASS" : "FAIL"} in ${pl.calls} calls, ${formatTokens(pl.tokens)}${costStr}, ${formatMs(pl.durationMs)}`);
+    const byStr = pl.solvedBy !== "unknown" ? ` [${pl.solvedBy}]` : '';
+    const hashStr = pl.systemPromptHash ? ` prompt=${pl.systemPromptHash}` : '';
+    console.log(`  ${pl.passed ? "PASS" : "FAIL"} in ${pl.calls} calls, ${formatTokens(pl.tokens)}${costStr}, ${formatMs(pl.durationMs)}${byStr}${hashStr}`);
 
     if (pl.passed) passed++;
+
+    // Record prompt run for version tracking
+    if (pl.systemPromptHash) {
+      recordPromptRun({
+        timestamp: new Date().toISOString(),
+        problem: p.name,
+        systemPromptHash: pl.systemPromptHash,
+        systemPromptPreview: `[hash: ${pl.systemPromptHash}]`,
+        userPrompt: p.description,
+        complexity: p.complexity,
+        passed: pl.passed,
+        calls: pl.calls,
+        tokens: pl.tokens,
+        solvedBy: pl.solvedBy,
+      });
+    }
 
     results.push({
       name: p.name,
@@ -285,6 +308,8 @@ async function runBenchmark(problems: TestProblem[], label: string): Promise<voi
       baselineCalls: 1,
       llmAloneCalls: 1,
       passed: pl.passed,
+      solvedBy: pl.solvedBy,
+      promptHash: pl.systemPromptHash,
     });
 
     totalPipelineCalls += pl.calls;
@@ -331,6 +356,15 @@ async function main() {
   const args = process.argv.slice(2);
   const { problems, label } = getProblems(args);
 
+  // Check for --prompt-report flag (can be used standalone or with other modes)
+  const showPromptReport = args.includes("--prompt-report");
+
+  if (showPromptReport && problems.length === 0) {
+    // Standalone prompt report — no benchmarks to run, just show history
+    console.log(generatePromptReport());
+    return;
+  }
+
   if (problems.length === 0) {
     console.log("No problems to run.");
     return;
@@ -341,6 +375,11 @@ async function main() {
     await runConsistencyCheck(problems, Math.max(2, Math.min(runCount, 5)));
   } else {
     await runBenchmark(problems, label);
+  }
+
+  // Show prompt report after benchmark if requested
+  if (showPromptReport) {
+    console.log("\n" + generatePromptReport());
   }
 }
 

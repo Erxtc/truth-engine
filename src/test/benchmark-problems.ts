@@ -808,4 +808,20 @@ Example 3: proposedSolution([[1,1],[0,0]]) → [0, 0]`,
     language: "python",
     complexity: "hard",
   },
+  {
+    name: "eval-rpn",
+    description: `Write proposedSolution(tokens) that evaluates a Reverse Polish Notation expression. tokens is a list of strings, where each string is either an integer or one of the operators +, -, *, /. Division is integer division that truncates toward zero (like Python's // operator). The expression is guaranteed to be valid.
+
+Return an integer — the result of evaluating the expression.
+
+Algorithm: iterate left to right. If token is a number, push it on the stack. If token is an operator, pop the top two values (the right operand first, then the left operand), apply the operator, and push the result back. At the end, the stack contains one value — return it.
+
+Example 1: proposedSolution(["2","1","+","3","*"]) → 9
+Example 2: proposedSolution(["4","13","5","/","+"]) → 6
+Example 3: proposedSolution(["10","6","9","3","+","-11","*","/","*","17","+","5","+"]) → 22
+Example 4: proposedSolution(["3","-4","+"]) → -1
+Example 5: proposedSolution(["5"]) → 5`,
+    language: "python",
+    complexity: "simple",
+  },
 ];

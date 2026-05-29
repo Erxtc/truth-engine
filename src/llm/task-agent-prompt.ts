@@ -27,6 +27,15 @@ export function buildSystemPrompt(wf: WorkflowConfig, options?: SystemPromptOpti
   const useNotes = wf.enableNotes === true;
   const useResearchPhases = wf.researchPhases === true;
 
+  // Verifier script (project/cli-project) vs oracle
+  const isVerifier = wf.isVerifierScript === true;
+  const verifierFile = isVerifier ? wf.verifyCommand.replace(/^node\s+/, "") : "oracle.js";
+  const verifierRun = isVerifier ? wf.verifyCommand : "python3 oracle.py solution.py";
+  const verifierLabel = isVerifier ? "verifier" : "oracle";
+  const verifierReadInstr = isVerifier
+    ? `read_file("${verifierFile}") to understand how the verifier checks your solution`
+    : `read_file("oracle.js") to understand expected output format`;
+
   const workflow = useResearchPhases
     ? `WORKFLOW — 3 phases: research → implement → verify:
 
@@ -38,7 +47,7 @@ d) write_note("todos.md") as a checklist. Each todo must be independently verifi
    - [ ] Substask 1: <description> — verify by: <command to run>
    - [ ] Substask 2: <description> — verify by: <command to run>
    ...
-e) If the oracle.js is available, read_file("oracle.js") to understand expected output format
+e) ${verifierReadInstr}
 
 ── PHASE 2: INCREMENTAL IMPLEMENT & VERIFY ──
 For EACH todo item in order:
@@ -66,13 +75,13 @@ KEY PRINCIPLE: Verify each piece BEFORE composing. A wrong component poisons the
 5. When you have a complete document written: call finish()`
     : isHard
     ? `WORKFLOW (complex problem — research first, then code):
-1. RESEARCH THE ALGORITHM: Before writing code, make sure you understand the EXACT algorithm. If you don't know it cold (pseudocode, data structures, edge cases), use web_search() NOW. Read the oracle with read_file("oracle.js") to see what test cases expect. Do NOT skip research — implementing the wrong algorithm wastes all your turns.
+1. RESEARCH THE ALGORITHM: Before writing code, make sure you understand the EXACT algorithm. If you don't know it cold (pseudocode, data structures, edge cases), use web_search() NOW. ${isVerifier ? `Read the verifier script with read_file("${verifierFile}") to understand how it checks your output.` : `Read the oracle with read_file("oracle.js") to see what test cases expect.`} Do NOT skip research — implementing the wrong algorithm wastes all your turns.
 2. PLAN: Write a short plan (2-4 sentences). What specific algorithm? What sub-components? What are the key data structures?
 3. COMPONENT TESTING: For compound algorithms (AES, RSA, AVL, BFS, Dijkstra, etc.), build and test ONE sub-component at a time. Write a small test harness for each component BEFORE integrating. Verify the component against known test vectors if available.
 4. Write your COMPLETE solution to: ${wf.solutionFiles.join(", ")}
-5. VERIFY: Run \`${wf.verifyCommand}\` NOW. The oracle output tells you EXACTLY what passed/failed with expected vs got values. This is your single source of truth.
+5. VERIFY: Run \`${wf.verifyCommand}\` NOW. The ${verifierLabel} output tells you EXACTLY what passed/failed with expected vs got values. This is your single source of truth.
 6. If all tests pass → finish(). If any test fails → READ the expected/got detail, write a debug script to trace the failing input, find the bug, fix, and go to step 5.
-7. If you've made 3 changes and the same test still fails: your hypothesis is WRONG. Re-read the oracle. Re-research the algorithm from scratch. You may be implementing the wrong approach entirely.`
+7. If you've made 3 changes and the same test still fails: your hypothesis is WRONG. Re-read the ${verifierLabel}. Re-research the algorithm from scratch. You may be implementing the wrong approach entirely.`
     : wf.testFirst
     ? `WORKFLOW:
 1. Analyze the problem and plan your approach
@@ -119,23 +128,23 @@ KEY PRINCIPLE: Verify each piece BEFORE composing. A wrong component poisons the
 - One Action per response — never chain multiple actions
 - After each Action you receive an Observation — use it to decide your next step
 - Write the COMPLETE solution — no stubs, no TODOs, no wrappers
-- The oracle is the final judge — run it LAST after composing all pieces. It gives you precise expected vs got values.
+- The ${verifierLabel} is the final judge — run it LAST after composing all pieces. ${isVerifier ? `It checks syntax, execution, and functional tests. It must pass before finish().` : `It gives you precise expected vs got values.`}
 - VERIFY SUBSTEPS FIRST: Before composing the final solution, verify each component independently. Write a quick test for each piece and run it. A wrong component poisons the whole.
 - RESEARCH BEFORE CODING: For domains requiring formulas, constants, or factual data (chemistry, physics, biology, engineering), use web_search() and capture findings in notes/ BEFORE writing code. Don't guess formulas — look them up.
 - TRACK PROGRESS: Keep notes/todos.md updated. Mark items [- ✓] when verified. The todo list is your compass — if it's disorganized, your thinking is too.
-- DEBUG smart: when the oracle fails, trace the EXACT failing input through EACH component. Find which component produced the wrong value. Fix THAT component, not random stuff.
+- DEBUG smart: when the ${verifierLabel} fails, trace the EXACT failing input through EACH component. Find which component produced the wrong value. Fix THAT component, not random stuff.
 - STUCK ON SAME TODO: If 3+ fixes haven't fixed a substep, your approach to THAT substep is wrong. Re-research it. Consider a different formula or method.
 - TRUST YOUR MATH: if you compute an answer using a stated formula and it disagrees with an example, your computation is more likely correct than the example. Examples can contain errors — formulas don't lie. NEVER change a correct formula to match a wrong example. Instead, note the discrepancy in your finish() summary.`
     : isHard
     ? `\nRULES:
-- READ THE ORACLE FIRST: Before coding, read oracle.js with read_file("oracle.js"). It contains the EXACT test cases and expected output format. This is your specification — code to match it.
+- READ THE ${verifierLabel.toUpperCase()} FIRST: Before coding, read ${verifierFile} with read_file("${verifierFile}"). ${isVerifier ? `It runs your code and checks syntax, execution, and functional tests. You must pass it before finish().` : `It contains the EXACT test cases and expected output format. This is your specification — code to match it.`}
 - NEVER skip testing — you MUST run the verification and see all tests pass before finish()
 - One Action per response — never chain multiple actions
 - After each Action you receive an Observation — use it to decide your next step
 - Write the COMPLETE solution — no stubs, no TODOs, no wrappers
-- The oracle is the final judge — run it FIRST after writing code (step 5 in workflow). It gives you precise expected vs got values. Use those to debug.
+- The ${verifierLabel} is the final judge — run it FIRST after writing code (step 5 in workflow). ${isVerifier ? `It checks your solution and tells you what passed/failed. Use that to debug.` : `It gives you precise expected vs got values. Use those to debug.`}
 - BUILD INCREMENTALLY: For compound algorithms, test each component independently before composing. 20 tested lines > 200 untested lines.
-- DEBUG smart: when the oracle fails, write a debug script that traces the EXACT failing input through your code. Print intermediate values. Find the specific line where values deviate. Fix THAT line, not random stuff.
+- DEBUG smart: when the ${verifierLabel} fails, write a debug script that traces the EXACT failing input through your code. Print intermediate values. Find the specific line where values deviate. Fix THAT line, not random stuff.
 - RE-RESEARCH WHEN STUCK: If 3+ fixes haven't reduced the failure count, the algorithm may be fundamentally wrong. Use web_search() to research the correct approach from scratch. Delete the old file and start fresh.
 - TRUST YOUR MATH: if you compute an answer using a stated formula and it disagrees with an example, your computation is more likely correct than the example. Examples can contain errors — formulas don't lie. NEVER change a correct formula to match a wrong example. Instead, note the discrepancy in your finish() summary.`
     : `\nRULES:
@@ -143,8 +152,8 @@ KEY PRINCIPLE: Verify each piece BEFORE composing. A wrong component poisons the
 - One Action per response — never chain multiple actions
 - After each Action you receive an Observation — use it to decide your next step
 - Write the COMPLETE solution — no stubs, no TODOs, no wrappers
-- The oracle is the final judge — run it FIRST after writing code (step 3 in workflow). It gives you precise expected vs got values. Use those to debug.
-- DEBUG smart: when the oracle fails, write a debug script that traces the EXACT failing input through your code. Print intermediate values. Find the specific line where values deviate. Fix THAT line, not random stuff.
+- The ${verifierLabel} is the final judge — run it FIRST after writing code (step 3 in workflow). ${isVerifier ? `It checks your solution and tells you what passed/failed. Use that to debug.` : `It gives you precise expected vs got values. Use those to debug.`}
+- DEBUG smart: when the ${verifierLabel} fails, write a debug script that traces the EXACT failing input through your code. Print intermediate values. Find the specific line where values deviate. Fix THAT line, not random stuff.
 - TRUST YOUR MATH: if you compute an answer using a stated formula and it disagrees with an example, your computation is more likely correct than the example. Examples can contain errors — formulas don't lie. NEVER change a correct formula to match a wrong example. Instead, note the discrepancy in your finish() summary.`
 
   const decompositionSection = isDocument ? "" : `\nDECOMPOSITION — spawn peer researchers for independent sub-problems:
@@ -212,10 +221,10 @@ Action: write_note("todos.md")
 - [ ] Compute E_cell = E0_cathode - E0_anode
 \`\`\`
 ` : ""}
-Thought: Now I need to verify against the oracle
-Action: run_command("python3 oracle.py solution.py")
+Thought: Now I need to verify against the ${verifierLabel}
+Action: run_command("${verifierRun}")
 
-Thought: The oracle shows all tests pass
+Thought: The ${verifierLabel} shows all tests pass
 Action: finish("All tests passing — solution handles all cases correctly")
 
 IMPORTANT: Always write a real Thought describing your actual intent, and a real Action with an actual tool name and argument. Never use placeholder text like "tool_name" or "what you're doing".`;

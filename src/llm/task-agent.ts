@@ -51,6 +51,9 @@ export interface WorkflowConfig {
   outputPaths?: string[];
   /** Shell commands to run before the agent starts (e.g., pip install numpy). Non-blocking. */
   workspaceSetup?: string[];
+  /** If true, verifyCommand is a verifier script (e.g. "node verify-cli-project.js"), not an oracle.
+   *  Changes the system prompt to say "verifier" instead of "oracle" and references the correct script. */
+  isVerifierScript?: boolean;
 }
 
 export interface TaskAgentConfig {

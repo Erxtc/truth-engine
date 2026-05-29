@@ -244,7 +244,10 @@ const DOMAIN_PRESETS: Record<string, Partial<WorkflowConfig>> = {
       "Working Python CLI application with all required features implemented and tested",
     language: "python",
     testFirst: false,
-    enableWebSearch: false,
+    enableWebSearch: true,
+    enableNotes: true,
+    researchPhases: true,
+    isVerifierScript: true,
     outputType: "code",
     invariants: [
       "Write a COMPLETE, working Python CLI application — no stubs, no TODOs",
@@ -270,6 +273,7 @@ const DOMAIN_PRESETS: Record<string, Partial<WorkflowConfig>> = {
     language: "html",
     testFirst: false,
     enableWebSearch: false,
+    isVerifierScript: true,
     outputType: "code",
     invariants: [
       "HTML must be valid and well-formed — DOCTYPE, proper tags, no unclosed elements",

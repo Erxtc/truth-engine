@@ -163,9 +163,16 @@ function parseProblemExamples(problem: string): ParsedExample[] {
   return examples;
 }
 
-/** Strip trailing commentary from expected values: "because ...", "since ...", etc. */
+/** Strip trailing commentary from expected values: "because ...", "since ...", parenthetical notes, "or equivalent X", etc. */
 function cleanExpected(raw: string): string {
-  return raw.replace(/[;,]?\s*(?:because|since|where|\(i\.e\.|—|–).*$/i, "").replace(/\.$/, "").trim();
+  return raw
+    .replace(/[;,]?\s*(?:because|since|where|\(i\.e\.|—|–).*$/i, "")
+    .replace(/\.$/, "")
+    // Strip trailing parenthetical annotations: "None (wall blocks path)" → "None", '["a","b"] (max 5, sorted)' → '["a","b"]'
+    .replace(/\s*\([^)]*\)\s*$/, "")
+    // Strip "or equivalent X [note]" patterns: "[...] or equivalent shortest path (length 7)" → "[...]"
+    .replace(/\s*or\s+equivalent\b.*$/i, "")
+    .trim();
 }
 
 function pythonToJs(expr: string): string {

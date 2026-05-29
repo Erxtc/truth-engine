@@ -38,28 +38,6 @@ export function buildCompressionHarness(source: string, lang: "js" | "ts" | "pyt
 	return { files: { [file]: code }, command: cmd, timeoutMs: 20_000 };
 }
 
-// ── Project / generic ─────────────────────────────────────────────────────────
-
-export interface ProjectHarnessSpec {
-	files: Record<string, string>;
-	installCommand?: string;
-	buildCommand?: string;
-	testCommand: string;
-	timeoutMs?: number;
-	gitRepo?: string;
-}
-
-export function buildProjectHarness(spec: ProjectHarnessSpec): { command: string; timeoutMs: number } {
-	const parts: string[] = [];
-	if (spec.installCommand) parts.push(`(${spec.installCommand}) 2>&1 | tail -5`);
-	if (spec.buildCommand) parts.push(spec.buildCommand);
-	parts.push(spec.testCommand);
-	return {
-		command: parts.join(" && "),
-		timeoutMs: spec.timeoutMs ?? 120_000,
-	};
-}
-
 // ── JS/TS harness template ────────────────────────────────────────────────────
 
 function jsSortingHarness(source: string): string {
@@ -94,7 +72,7 @@ const stages = [];
 stages.push(stageWrap("UnitTests", () => {
   const results = CASES.map(([name, arr]) => {
     const a = [...arr];
-    const result = proposedSort([...a]);
+    const result = proposedSolution([...a]);
     const expected = [...a].sort((x,y) => x-y);
     if (!Array.isArray(result))
       return { name, passed: false, reason: "Not an array" };
@@ -112,7 +90,7 @@ stages.push(stageWrap("PropertyFuzz", () => {
   for (let i = 0; i < 500; i++) {
     const len = Math.floor(Math.random() * 300);
     const arr = Array.from({length: len}, () => Math.floor(Math.random() * 2001) - 1000);
-    const result = proposedSort([...arr]);
+    const result = proposedSolution([...arr]);
     const expected = [...arr].sort((x,y) => x-y);
     if (result.length !== arr.length)
       return { passed: false, reason: "Fuzz length on " + JSON.stringify(arr.slice(0,4)) };
@@ -160,7 +138,7 @@ CASES = [
 def run_unit_tests():
     results = []
     for name, arr in CASES:
-        result = proposed_sort(arr[:])
+        result = proposedSolution(arr[:])
         expected = sorted(arr)
         if result == expected:
             results.append({"name": name, "passed": True})
@@ -172,7 +150,7 @@ def run_unit_tests():
 def run_fuzz():
     for i in range(500):
         arr = [random.randint(-500, 500) for _ in range(random.randint(0, 200))]
-        result = proposed_sort(arr[:])
+        result = proposedSolution(arr[:])
         if result != sorted(arr):
             return {"passed": False, "reason": f"Fuzz wrong on {arr[:4]}"}
     return {"passed": True, "metrics": {"iterations": 500}}
@@ -197,7 +175,7 @@ function cSortingHarness(): string {
 		"#include <stdlib.h>",
 		"#include <string.h>",
 		"",
-		"void proposed_sort(int *arr, int n);",
+		"void proposedSolution(int *arr, int n);",
 		"",
 		"static int cmp_int(const void *a, const void *b) {",
 		"    int ia = *(const int *)a, ib = *(const int *)b;",
@@ -212,7 +190,7 @@ function cSortingHarness(): string {
 		"    memcpy(got, src, n*sizeof(int));",
 		"    memcpy(exp, src, n*sizeof(int));",
 		"    qsort(exp, n, sizeof(int), cmp_int);",
-		"    proposed_sort(got, n);",
+		"    proposedSolution(got, n);",
 		"    int ok = memcmp(got, exp, n*sizeof(int)) == 0;",
 		"    free(got); free(exp);",
 		"    return (TR){ name, ok };",
@@ -250,7 +228,7 @@ function cSortingHarness(): string {
 		"        int *exp = malloc((n+1)*sizeof(int));",
 		"        for (int j = 0; j < n; j++) arr[j] = exp[j] = (rand()%2001)-1000;",
 		"        qsort(exp, n, sizeof(int), cmp_int);",
-		"        proposed_sort(arr, n);",
+		"        proposedSolution(arr, n);",
 		"        if (memcmp(arr, exp, n*sizeof(int)) != 0) fuzz_pass = 0;",
 		"        free(arr); free(exp);",
 		"    }",

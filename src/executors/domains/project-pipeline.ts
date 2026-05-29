@@ -1,6 +1,6 @@
-import { Sandbox, parseSandboxOutput } from "../sandbox";
-import type { PipelineResult } from "../../verification/types";
-import type { Proposal, WorkingContext } from "../../core/types";
+import { Sandbox, parseSandboxOutput } from "../sandbox/index";
+import { failPipeline } from "../../utils/general";
+import type { PipelineResult, StageResult, Proposal, WorkingContext } from "../../core/types";
 
 /**
  * Pipeline for multi-file project proposals.
@@ -12,12 +12,12 @@ export async function runProjectPipeline(
 	_ctx: WorkingContext
 ): Promise<PipelineResult> {
 	if (proposal.executable.type !== "project") {
-		return fail("Project pipeline requires a project executable");
+		return failPipeline("Project pipeline requires a project executable");
 	}
 
 	const exe = proposal.executable;
 	const sb = new Sandbox("truth-proj-");
-	const stages: import("../../verification/types").StageResult[] = [];
+	const stages: StageResult[] = [];
 
 	try {
 		// 1. Clone git repo if specified
@@ -90,10 +90,3 @@ export async function runProjectPipeline(
 	}
 }
 
-function fail(reason: string): PipelineResult {
-	return {
-		overallPassed: false,
-		stages: [{ stageName: "Validation", passed: false, reason, runtimeMs: 0 }],
-		finalMetrics: {},
-	};
-}

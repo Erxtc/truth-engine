@@ -1,15 +1,5 @@
-import type { ConfidenceLevel } from "../../core/types";
-import type { Proposal, WorkingContext } from "../../core/types";
-import type { PipelineResult } from "../../verification/types";
+import type { ConfidenceLevel, PipelineResult, Proposal, WorkingContext } from "../../core/types";
 import type { Artifact } from "../../db/schema";
-
-export interface CrossValidationResult {
-	agree: boolean;
-	/** Human-readable summary of what was compared and what differed */
-	summary: string;
-	/** Fraction of test cases where both proposals produced identical outputs (0–1) */
-	agreementRate: number;
-}
 
 export interface DomainSpec {
 	name: string;
@@ -28,14 +18,12 @@ export interface DomainSpec {
 	 * Optional — built-in domains use hardcoded rules in getDomainFormatRules().
 	 */
 	solutionFormat?: string;
+	/** Oracle test source code (Python). When set, the proposer receives this as an
+	 *  implementation target — "make these tests pass." Set by auto-detect for custom
+	 *  domains. Built-in domains (sorting, compression) use their own oracles. */
+	testSource?: string;
 	/** Execute a proposal through the domain's verification pipeline */
 	run(proposal: Proposal, ctx: WorkingContext, artifact: Artifact): Promise<PipelineResult>;
-	/**
-	 * Cross-validate two independently-derived proposals that have both passed `run()`.
-	 * Returns whether they produce equivalent outputs on a shared test suite.
-	 * Required for consensus (confidence level 3). Optional for lower levels.
-	 */
-	crossValidate?(a: Proposal, b: Proposal): Promise<CrossValidationResult>;
 }
 
 const registry = new Map<string, DomainSpec>();

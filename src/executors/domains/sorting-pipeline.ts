@@ -1,8 +1,7 @@
-import { Sandbox, parseSandboxOutput } from "../sandbox";
+import { Sandbox, parseSandboxOutput } from "../sandbox/index";
 import { buildSortingHarness } from "../sandbox/harness-builder";
-import type { PipelineResult } from "../../verification/types";
-import type { Proposal, WorkingContext } from "../../core/types";
-import { transpileToJs } from "../../utils/general";
+import type { PipelineResult, Proposal, WorkingContext } from "../../core/types";
+import { transpileToJs, failPipeline, normalizeEscapes } from "../../utils/general";
 import { validateAndFixPython, validateAndFixJs, validateAndFixC } from "../../utils/code-validator";
 
 export async function runSortingPipeline(
@@ -10,26 +9,26 @@ export async function runSortingPipeline(
 	_ctx: WorkingContext
 ): Promise<PipelineResult> {
 	if (proposal.executable.type !== "code") {
-		return noExec("Sorting requires a code executable");
+		return failPipeline("Sorting requires a code executable");
 	}
 
 	const { lang, source: rawSource } = proposal.executable;
 	if (lang !== "js" && lang !== "ts" && lang !== "python" && lang !== "c") {
-		return noExec(`Unsupported language for sorting: ${lang}`);
+		return failPipeline(`Unsupported language for sorting: ${lang}`);
 	}
 
 	// Pre-execution syntax validation
 	if (lang === "python") {
-		const v = validateAndFixPython(rawSource.replace(/\\n/g, "\n").replace(/\\t/g, "\t"));
-		if (!v.ok) return noExec(v.error ?? "Python syntax error");
+		const v = validateAndFixPython(normalizeEscapes(rawSource));
+		if (!v.ok) return failPipeline(v.error ?? "Python syntax error");
 		if (v.autoFixed) console.log("  [validator] Auto-fixed Python source before execution");
 	} else if (lang === "c") {
 		const v = validateAndFixC(rawSource);
-		if (!v.ok) return noExec(v.error ?? "C syntax error");
+		if (!v.ok) return failPipeline(v.error ?? "C syntax error");
 	} else if (lang === "js" || lang === "ts") {
 		const src = lang === "js" ? transpileToJs(rawSource) : rawSource;
 		const v = validateAndFixJs(src);
-		if (!v.ok) return noExec(v.error ?? "JS syntax error");
+		if (!v.ok) return failPipeline(v.error ?? "JS syntax error");
 	}
 
 	// Downgrade TS → JS when lang="js" in case model slipped in type annotations
@@ -46,12 +45,4 @@ export async function runSortingPipeline(
 	} finally {
 		sb.cleanup();
 	}
-}
-
-function noExec(reason: string): PipelineResult {
-	return {
-		overallPassed: false,
-		stages: [{ stageName: "Validation", passed: false, reason, runtimeMs: 0 }],
-		finalMetrics: {},
-	};
 }

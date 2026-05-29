@@ -6,9 +6,10 @@
 import * as v from "valibot";
 import { queryReasoning } from "../llm";
 import type { DomainSpec } from "../executors/domains/registry";
-import type { Proposal } from "../core/types";
+import type { Proposal, WorkingContext } from "../core/types";
 import type { Artifact } from "../db/schema";
 import { validateAndFixPython } from "../utils/code-validator";
+import { normalizeEscapes } from "../utils/general";
 
 const baselineSchema = v.object({
 	code: v.string(),
@@ -29,31 +30,49 @@ export interface BaselineResult {
 export async function runBaseline(
 	problem: string,
 	domainSpec: DomainSpec,
+	language: "python" | "js" = "python",
+	/** Optional oracle test source — included so the model sees the exact tests it must pass. */
+	oracleSpec?: string,
 ): Promise<BaselineResult> {
 	const t0 = Date.now();
 
-	const prompt = `You are a programmer. Solve the following problem by writing a Python function named \`proposedSolution\`.
+	const isJs = language === "js";
+	const langLabel = isJs ? "JavaScript" : "Python 3";
+	const funcName = "proposedSolution";
+	const langRules = isJs
+		? `- Language: JavaScript (plain JS, no TypeScript). Standard library only.
+- Function must be named exactly \`${funcName}\`
+- Return the answer directly
+- JS: use proper formatting, no minified code, no one-liners`
+		: `- Language: Python 3. Standard library (math, collections, itertools, heapq, functools, etc.) is allowed. No third-party packages (no numpy, scipy, pandas, etc.)
+- Function must be named exactly \`${funcName}\`
+- Return the answer directly
+- PYTHON: use proper newlines and indentation — NEVER put an entire function on one line with semicolons`;
+
+	const oracleBlock = oracleSpec
+		? `\n\nVERIFICATION TESTS (your code MUST pass these exact tests):\n\`\`\`python\n${oracleSpec}\n\`\`\`\n\nWrite code that satisfies the test assertions above.`
+		: "";
+
+	const prompt = `You are a programmer. Solve the following problem by writing a ${langLabel} function named \`${funcName}\`.
 
 Problem:
 ${problem}
+${oracleBlock}
 
-${domainSpec.solutionFormat ? `Expected function: ${domainSpec.solutionFormat}` : "Write a function named proposedSolution that returns the answer."}
+${domainSpec.solutionFormat ? `Expected function: ${domainSpec.solutionFormat}` : `Write a function named ${funcName} that returns the answer.`}
 
 Rules:
-- Language: Python 3. Standard library (math, collections, itertools, heapq, functools, etc.) is allowed. No third-party packages (no numpy, scipy, pandas, etc.)
-- Function must be named exactly \`proposedSolution\`
-- Return the answer directly
-- PYTHON: use proper newlines and indentation — NEVER put an entire function on one line with semicolons
+${langRules}
 
 Return ONLY valid JSON:
 {
-  "code": "<complete Python function as a single string>",
-  "language": "python",
+  "code": "<complete ${langLabel} function as a single string>",
+  "language": "${language}",
   "explanation": "<one sentence>"
 }`.trim();
 
 	let code = "";
-	let language: "python" | "js" = "python";
+	let lang: "python" | "js" = language;
 	let explanation = "";
 	let llmMs = 0;
 
@@ -67,12 +86,12 @@ Return ONLY valid JSON:
 		});
 		llmMs = Date.now() - t1;
 		code = result.response.code;
-		language = result.response.language;
+		lang = result.response.language;
 		explanation = result.response.explanation;
 	} catch (err) {
 		return {
 			code: "",
-			language: "python",
+			language,
 			explanation: "",
 			passed: false,
 			reason: `LLM error: ${err instanceof Error ? err.message.slice(0, 100) : String(err)}`,
@@ -83,10 +102,16 @@ Return ONLY valid JSON:
 
 	// Run through the same oracle as the system
 	// Normalize literal \n sequences that jsonrepair may have introduced
-	const rawCode = code.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\'/g, "'");
+	const rawCode = normalizeEscapes(code);
 	// Apply the same pre-execution validator the system uses
-	const validation = language === "python" ? validateAndFixPython(rawCode) : { ok: true, source: rawCode, autoFixed: false };
+	const validation = lang === "python" ? validateAndFixPython(rawCode) : { ok: true, source: rawCode, autoFixed: false };
 	const normalizedCode = validation.source;
+
+	const fakeContext: WorkingContext = {
+		domain: domainSpec.name,
+		problem,
+		depth: 0,
+	};
 
 	const fakeProposal: Proposal = {
 		hypothesis: "baseline",
@@ -94,7 +119,7 @@ Return ONLY valid JSON:
 		assumptions: [],
 		possible_failure_modes: [],
 		suggested_tests: [],
-		executable: { type: "code", lang: language, source: normalizedCode },
+		executable: { type: "code", lang, source: normalizedCode },
 	};
 
 	const fakeArtifact = {
@@ -103,8 +128,8 @@ Return ONLY valid JSON:
 		problemId: "baseline",
 		parentId: null,
 		depth: 0,
-		status: "alive" as const,
-		score: null,
+		status: "active" as const,
+		score: 0,
 		hypothesisText: "baseline",
 		formalStatement: null,
 		payload: fakeProposal,
@@ -112,19 +137,22 @@ Return ONLY valid JSON:
 		confidenceLevel: 0,
 		title: "baseline",
 		provenance: null,
-		createdAt: new Date().toISOString(),
-	} as unknown as Artifact;
+		createdAt: new Date(),
+		type: "code_module",
+		workspacePath: null,
+		updatedAt: new Date(),
+	} as Artifact;
 
 	let passed = false;
 	let reason = "oracle-not-run";
 
 	try {
-		const execResult = await domainSpec.run(fakeProposal, {} as any, fakeArtifact);
+		const execResult = await domainSpec.run(fakeProposal, fakeContext, fakeArtifact);
 		passed = execResult.overallPassed;
 		reason = execResult.stages[0]?.reason ?? (passed ? "ok" : "failed");
 	} catch (err) {
 		reason = `oracle-error: ${err instanceof Error ? err.message.slice(0, 100) : String(err)}`;
 	}
 
-	return { code, language, explanation, passed, reason, durationMs: Date.now() - t0, llmMs };
+	return { code, language: lang, explanation, passed, reason, durationMs: Date.now() - t0, llmMs };
 }

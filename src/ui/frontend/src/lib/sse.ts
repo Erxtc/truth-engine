@@ -33,7 +33,7 @@ export async function pollState() {
   try {
     const r = await fetch('/api/state');
     if (!r.ok) return;
-    const s = await r.json();
+    const s = await r.json() as any;
     runState.update(rs => ({
       ...rs,
       problem: s.problem ?? rs.problem,
@@ -48,6 +48,6 @@ export async function pollArtifacts() {
   try {
     const r = await fetch('/api/artifacts');
     if (!r.ok) return;
-    artifacts.set(await r.json());
+    artifacts.set(await r.json() as any);
   } catch {}
 }

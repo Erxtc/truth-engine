@@ -13,7 +13,6 @@
   $: items   = t === 'array'  ? (value as unknown[]) : [];
   $: count   = t === 'object' ? entries.length : t === 'array' ? items.length : 0;
 
-  // Long strings get truncation
   const MAX_STR = 300;
   let strExpanded = false;
   $: strVal  = typeof value === 'string' ? value : '';
@@ -79,25 +78,26 @@
 {/if}
 
 <style>
-  .jstr  { color: #98c379; font-family: 'Consolas', monospace; font-size: 11px; word-break: break-word; cursor: default; }
-  .jnum  { color: #d19a66; font-family: 'Consolas', monospace; font-size: 11px; }
-  .jbool { color: #e5c07b; font-family: 'Consolas', monospace; font-size: 11px; }
-  .jnull { color: #e06c75; font-family: 'Consolas', monospace; font-size: 11px; }
-  .jkey  { color: #61afef; font-family: 'Consolas', monospace; font-size: 11px; }
-  .jpunct{ color: var(--text3); font-family: 'Consolas', monospace; font-size: 11px; }
-  .jbrace{ color: var(--text2); font-family: 'Consolas', monospace; font-size: 11px; }
-  .jcount{ color: var(--text3); font-size: 10px; }
+  .jstr  { color: #a5d6a7; font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 11px; word-break: break-word; cursor: default; }
+  .jnum  { color: #ffcc80; font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 11px; }
+  .jbool { color: #ffe082; font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 11px; }
+  .jnull { color: #ef9a9a; font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 11px; }
+  .jkey  { color: #90caf9; font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 11px; }
+  .jpunct{ color: var(--text-muted); font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 11px; }
+  .jbrace{ color: var(--text-secondary); font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 11px; }
+  .jcount{ color: var(--text-muted); font-size: 10px; font-family: 'Inter', sans-serif; }
   .toggle { cursor: pointer; user-select: none; }
   .toggle:hover { opacity: .75; }
   .jbody {
-    padding-left: 16px;
-    border-left: 1px solid var(--border);
+    padding-left: 14px; border-left: 1px solid var(--border);
     margin: 2px 0 2px 4px;
   }
   .jline { padding: 1px 0; display: flex; flex-wrap: wrap; gap: 0; align-items: flex-start; }
   .str-toggle {
-    font-size: 9px; color: var(--blue); background: none;
-    border: 1px solid var(--border); border-radius: 3px;
-    padding: 0 4px; cursor: pointer; margin-left: 4px; vertical-align: middle;
+    font-size: 9px; color: var(--accent); background: none;
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 0 5px; cursor: pointer; margin-left: 4px; vertical-align: middle;
+    font-family: 'Inter', sans-serif;
   }
+  .str-toggle:hover { border-color: var(--accent); }
 </style>

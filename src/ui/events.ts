@@ -25,11 +25,6 @@ const _subs = new Set<(e: UIEvent) => void>();
 export const history: UIEvent[] = [];
 const MAX_HISTORY = 1000;
 
-export let runParamsState: Record<string, unknown> | null = null;
-export function setRunParamsState(p: Record<string, unknown>): void {
-  runParamsState = p;
-}
-
 export function emit(
   kind: EventKind,
   msg: string,

@@ -1,7 +1,7 @@
 import { writable, derived, get } from 'svelte/store';
 import type {
   UIEvent, Artifact, StepPlan, RunParams,
-  CallBlock, FeedItem,
+  CallBlock, FeedItem, Usage,
 } from './types';
 
 // ── Feed (ordered list of call blocks + raw events) ────────────────────
@@ -13,6 +13,10 @@ const openCallStack: CallBlock[] = [];
 // ── Artifacts ──────────────────────────────────────────────────────────
 export const artifacts = writable<Artifact[]>([]);
 export const selectedArtifact = writable<Artifact | null>(null);
+
+// ── UI state ────────────────────────────────────────────────────────────
+export const activeTab = writable<'feed' | 'artifacts' | 'stats'>('feed');
+export const selectedLlmCall = writable<CallBlock | null>(null);
 
 // ── Run state (polled from /api/state) ─────────────────────────────────
 export const runState = writable<{
@@ -30,7 +34,7 @@ export const agentState = writable<{ name: string; running: boolean }>({
 // ── Stats ───────────────────────────────────────────────────────────────
 export const stats = writable({
   survived: 0, killed: 0, repairs: 0,
-  llmCalls: 0, llmTotalMs: 0,
+  llmCalls: 0, llmTotalMs: 0, totalTokens: 0,
 });
 
 // ── Event filter ────────────────────────────────────────────────────────
@@ -60,14 +64,19 @@ export const visibleFeed = derived([feedItems, filter], ([$feed, $f]) => {
 // ── Full response store (key → text, for modal) ─────────────────────────
 export const respStore = writable<Record<string, string>>({});
 
+let callCounter = 0;
+
 // ── Event ingestion ─────────────────────────────────────────────────────
 export function ingest(e: UIEvent) {
   stats.update(s => {
     if (e.kind === 'artifact:survived') s.survived++;
     if (e.kind === 'artifact:killed')   s.killed++;
     if (e.kind === 'repair:start')      s.repairs++;
-    if (e.kind === 'llm:start')         s.llmCalls++;
+    if (e.kind === 'llm:start')         { s.llmCalls++; callCounter++; }
     if (e.kind === 'llm:end' && e.ms)  { s.llmTotalMs += e.ms; }
+    if (e.kind === 'llm:end' && e.detail?.usage) {
+      s.totalTokens += ((e.detail.usage as Usage).total_tokens ?? 0);
+    }
     return s;
   });
 
@@ -89,6 +98,8 @@ export function ingest(e: UIEvent) {
       ms: undefined,
       done: false,
       ts: e.ts,
+      stepIndex: get(runState).currentStep,
+      callNum: callCounter,
     };
     openCallStack.push(block);
     feedItems.update(f => [...f, block]);
@@ -113,6 +124,7 @@ export function ingest(e: UIEvent) {
       top.done = true;
       top.ms = e.ms;
       top.response = (e.detail?.responsePreview as string) ?? '';
+      top.usage = e.detail?.usage as Usage | undefined;
       // Store full response for modal
       respStore.update(s => ({ ...s, ['r' + top.id]: top.response }));
       feedItems.update(f => f);
@@ -124,8 +136,8 @@ export function ingest(e: UIEvent) {
 
   if (e.kind === 'step:advanced') {
     const m = e.msg.match(/(\d+)/);
-    if (m) {
-      runState.update(s => ({ ...s, currentStep: Math.max(0, parseInt(m[1]) - 1) }));
+    if (m && m[1]) {
+      runState.update(s => ({ ...s, currentStep: Math.max(0, parseInt(m[1], 10) - 1) }));
     }
   }
 

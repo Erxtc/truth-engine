@@ -47,6 +47,12 @@ export interface RunParams {
   budgetLlmCalls?: number;
 }
 
+export interface Usage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+}
+
 /** A processed LLM call block — groups llm:start / llm:thinking / llm:end */
 export interface CallBlock {
   kind: 'call';
@@ -58,9 +64,12 @@ export interface CallBlock {
   thinking: string;
   thinkWords: number;
   response: string;
+  usage?: Usage;
   ms?: number;
   done: boolean;
   ts: number;
+  stepIndex: number;
+  callNum: number;
 }
 
 /** A raw event that appears verbatim in the feed */

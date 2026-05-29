@@ -1,4 +1,4 @@
-import { subscribe, history, runParamsState, type UIEvent } from "./events";
+import { subscribe, history, type UIEvent } from "./events";
 import { db } from "../db/client";
 import { join } from "path";
 
@@ -21,8 +21,11 @@ function ext(path: string) {
 }
 
 export function startUiServer(): void {
-  const server = Bun.serve({
-    port: PORT,
+  let server: ReturnType<typeof Bun.serve> | null = null;
+  try {
+    server = Bun.serve({
+      port: PORT,
+      reusePort: true,
     async fetch(req) {
       const url = new URL(req.url);
 
@@ -79,6 +82,13 @@ export function startUiServer(): void {
   });
 
   console.log(`[ui] Dashboard → http://localhost:${server.port}`);
+  } catch (err: any) {
+    if (err?.code === "EADDRINUSE") {
+      console.log(`[ui] Port ${PORT} in use — dashboard skipped`);
+      return;
+    }
+    throw err;
+  }
 }
 
 async function handleState(): Promise<Response> {
@@ -105,7 +115,7 @@ async function handleState(): Promise<Response> {
       },
       stepPlan,
       currentStep: (problem as any).currentStep ?? 0,
-      runParams: runParamsState,
+      runParams: null,
     });
   } catch (err) {
     return Response.json({ error: String(err) }, { status: 500 });

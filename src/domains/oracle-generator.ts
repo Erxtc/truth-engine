@@ -126,6 +126,79 @@ function tryRepairOracle(oracleJs: string): string | null {
 	return repaired !== oracleJs ? repaired : null;
 }
 
+// ── Problem example injection ──────────────────────────────────────────────
+
+interface ParsedExample {
+  args: string;
+  expected: string;
+  label: string;
+}
+
+/** Parse example assertions from problem description (e.g. "Example 1: f(X) → Y"). */
+function parseProblemExamples(problem: string): ParsedExample[] {
+  const examples: ParsedExample[] = [];
+  const exampleBlock = /(?:^|\n)\s*(?:Example\s*(\d+)[:.])?\s*(?:proposedSolution|fn)\s*\(([^)]*(?:\([^)]*\)[^)]*)*)\)\s*(?:→|->|returns?|=)\s*(.+?)(?:\n|$)/gm;
+  let match;
+  while ((match = exampleBlock.exec(problem)) !== null) {
+    const num = match[1] || String(examples.length + 1);
+    const rawArgs = (match[2] || "").trim();
+    const rawExpected = cleanExpected((match[3] || "").trim());
+    if (!rawArgs || !rawExpected) continue;
+    examples.push({
+      args: pythonToJs(rawArgs),
+      expected: pythonToJs(rawExpected),
+      label: `example-${num}`,
+    });
+  }
+  if (examples.length === 0) {
+    const inlineRe = /proposedSolution\s*\(([^)]+(?:\([^)]*\)[^)]*)*)\)\s*(?:returns?|→|->)\s*(.+?)(?:\.|\n|$)/g;
+    let m, count = 1;
+    while ((m = inlineRe.exec(problem)) !== null) {
+      const rawArgs = (m[1] || "").trim();
+      const rawExpected = cleanExpected((m[2] || "").trim());
+      if (!rawArgs || !rawExpected) continue;
+      examples.push({ args: pythonToJs(rawArgs), expected: pythonToJs(rawExpected), label: `problem-example-${count++}` });
+    }
+  }
+  return examples;
+}
+
+/** Strip trailing commentary from expected values: "because ...", "since ...", etc. */
+function cleanExpected(raw: string): string {
+  return raw.replace(/[;,]?\s*(?:because|since|where|\(i\.e\.|—|–).*$/i, "").replace(/\.$/, "").trim();
+}
+
+function pythonToJs(expr: string): string {
+  let js = expr.trim();
+  js = js.replace(/\bNone\b/g, "null");
+  js = js.replace(/\bTrue\b/g, "true");
+  js = js.replace(/\bFalse\b/g, "false");
+  // Convert Python tuples to JS arrays (iteratively for nesting)
+  let prev = "";
+  while (prev !== js) {
+    prev = js;
+    js = js.replace(/\(([^()]*)\)/g, (_full: string, inner: string) => `[${inner}]`);
+  }
+  return js;
+}
+
+function injectProblemExamples(problem: string, oracleJs: string): string {
+  const examples = parseProblemExamples(problem);
+  if (examples.length === 0) return oracleJs;
+  const checks = examples.map((ex, i) =>
+    `  var _p${i} = fn(${ex.args});\n  var _e${i} = ${ex.expected};\n  if (JSON.stringify(_p${i}) !== JSON.stringify(_e${i})) { return { passed: false, reason: "${ex.label}-fail: expected " + JSON.stringify(_e${i}) + " got " + JSON.stringify(_p${i}) }; }`
+  ).join("\n\n");
+  const injected = oracleJs.replace(
+    /(\s*)(return\s*\{\s*passed\s*:\s*true\s*,?\s*reason\s*:\s*["']ok["']\s*\}\s*;?\s*)/,
+    `\n${checks}\n$1$2`,
+  );
+  if (injected === oracleJs) {
+    const lastBrace = oracleJs.lastIndexOf("}");
+    if (lastBrace > 0) return oracleJs.slice(0, lastBrace) + "\n" + checks + "\n}" + oracleJs.slice(lastBrace + 1);
+  }
+  return injected;
+}
+
 // ── Custom domain generation ──────────────────────────────────────────────
 
 export async function generateCustomDomain(problem: string): Promise<DomainSpec | null> {
@@ -289,14 +362,20 @@ FAILING TO ADD THESE CHECKS MEANS YOUR ORACLE WILL PASS BROKEN CODE.`.trimStart(
 			}
 			console.log(`[auto-detect] Oracle hardening: rejects broken stubs ✓`);
 
+			// Inject problem-statement examples as ground-truth checks
+			const oracleJsWithExamples = injectProblemExamples(problem, oracleJs);
+			if (oracleJsWithExamples !== oracleJs) {
+				console.log(`[auto-detect] Injected problem examples into oracle ✓`);
+			}
+
 			const spec: DomainSpec = {
 				name: r.domain_name,
 				invariants: r.invariants,
 				requiredConfidence: r.required_confidence as 1 | 2 | 3 | 4,
 				solutionFormat: r.solution_format,
-				testSource: oracleJs,
+				testSource: oracleJsWithExamples,
 				async run(proposal: Proposal, _ctx: WorkingContext, artifact: Artifact) {
-					return runCustomOracle(oracleJs, proposal, artifact, r.domain_name);
+					return runCustomOracle(oracleJsWithExamples, proposal, artifact, r.domain_name);
 				},
 			};
 
@@ -312,7 +391,7 @@ FAILING TO ADD THESE CHECKS MEANS YOUR ORACLE WILL PASS BROKEN CODE.`.trimStart(
 				invariants: r.invariants,
 				required_confidence: r.required_confidence,
 				solution_format: r.solution_format,
-				oracle_js: oracleJs,
+				oracle_js: oracleJsWithExamples,
 				cachedAt: new Date().toISOString(),
 			});
 			return spec;

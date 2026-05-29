@@ -596,7 +596,7 @@ Example 3: proposedSolution([".#.", "...", ".#."], (0, 0), (2, 2)) → [(0,0), (
   // ── Compression ────────────────────────────────────────────────────────────
   {
     name: "huffman-coding",
-    description: `Write proposedSolution(text) implementing Huffman coding to build a frequency-based binary tree and generate prefix codes. text is a string of ASCII characters. Return a dict with: "tree" (the Huffman tree as nested lists: [left, right] for internal nodes, or a string character for leaf nodes), "codes" (dict mapping each character to its binary code string, e.g. {"a":"0", "b":"10", "c":"11"}), "encoded_length" (integer, total bits when encoding the text = sum of each char's frequency times its code length).
+    description: `Write proposedSolution(text) implementing Huffman prefix encoding to build a frequency-based binary tree and generate optimal prefix codes. text is a string of ASCII characters. Return a dict with: "tree" (the Huffman tree as nested lists: [left, right] for internal nodes, or a string character for leaf nodes), "codes" (dict mapping each character to its binary code string, e.g. {"a":"0", "b":"10", "c":"11"}), "encoded_length" (integer, total bits when encoding the text = sum of each char's frequency times its code length).
 
 Algorithm: 1) Count character frequencies 2) Build a min-heap where each node is (frequency, id, tree) 3) Repeatedly extract the two smallest, combine into a new node [left, right] with combined frequency, push back 4) The single remaining node is the root. Assign '0' to left branch, '1' to right branch by DFS traversal.
 
@@ -745,5 +745,67 @@ CoinGecko response format: {"id":"bitcoin","name":"Bitcoin","market_data":{"curr
         expectedExitCode: 1,
       },
     ],
+  },
+  // ── Cryptographic primitives ───────────────────────────────────────────────
+  {
+    name: "sha256",
+    description: `Write proposedSolution(message) implementing the full SHA-256 cryptographic hash function from the NIST FIPS 180-4 specification. message is a string. Return the 64-character hex digest (lowercase). You MUST implement the hash function yourself — do NOT call hashlib.sha256().
+
+SHA-256 algorithm:
+1. Preprocessing: convert message to UTF-8 bytes, append 0x80, pad with zeros until length ≡ 448 mod 512, append 64-bit big-endian original bit length as two 32-bit words. Split into 512-bit chunks.
+2. Initialize 8 hash values: h0=0x6a09e667, h1=0xbb67ae85, h2=0x3c6ef372, h3=0xa54ff53a, h4=0x510e527f, h5=0x9b05688c, h6=0x1f83d9ab, h7=0x5be0cd19
+3. K constants (first 8): [0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, ...] — 64 total, use standard SHA-256 K values.
+4. For each chunk: prepare 64-word message schedule (first 16 from chunk as big-endian u32, rest via: w[i] = σ1(w[i-2]) + w[i-7] + σ0(w[i-15]) + w[i-16] mod 2^32). σ0 = ROTR(x,7)⊕ROTR(x,18)⊕SHR(x,3). σ1 = ROTR(x,17)⊕ROTR(x,19)⊕SHR(x,10). Then compress: for i in 0..63: T1 = h + Σ1(e) + Ch(e,f,g) + K[i] + w[i]; T2 = Σ0(a) + Maj(a,b,c); h=g; g=f; f=e; e=(d+T1) mod 2^32; d=c; c=b; b=a; a=(T1+T2) mod 2^32. Σ0 = ROTR(x,2)⊕ROTR(x,13)⊕ROTR(x,22). Σ1 = ROTR(x,6)⊕ROTR(x,11)⊕ROTR(x,25). Ch = (x&y)⊕(~x&z). Maj = (x&y)⊕(x&z)⊕(y&z). All additions mod 2^32.
+5. Add compressed values to hash state (mod 2^32).
+6. Output: h0..h7 as big-endian 32-bit hex (each 8 chars, 64 total). Use struct.pack('>I', h) or manual formatting.
+
+Example 1: proposedSolution("") → "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+Example 2: proposedSolution("hello") → "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+Example 3: proposedSolution("abc") → "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+Example 4: proposedSolution("The quick brown fox jumps over the lazy dog") → "d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592"`,
+    language: "python",
+    complexity: "very-hard",
+  },
+  // ── Physics simulation ─────────────────────────────────────────────────────
+  {
+    name: "nbody-simulation",
+    description: `Write proposedSolution(bodies, dt, steps) implementing an N-body gravitational simulation using Velocity Verlet integration. bodies is a list of dicts with keys: mass (float), x, y, vx, vy (floats). dt is the timestep in seconds. steps is the number of timesteps. G = 6.67430e-11. Return a list of frames, each frame being a list of {x, y} dicts. Frame 0 is initial positions, so result has steps+1 frames.
+
+Velocity Verlet algorithm per timestep:
+1. Half-step position update using CURRENT acceleration: x += vx*dt + 0.5*ax*dt², same for y
+2. Compute NEW accelerations at updated positions: for each body i, ax_i = Σ_{j≠i} G * m_j * (x_j - x_i) / (r_ij)³ where r_ij = sqrt((x_j-x_i)² + (y_j-y_i)² + ε), ε = 1e-9 (softening to prevent division by zero)
+3. Velocity update using average of old and new acceleration: vx += 0.5*(ax_old + ax_new)*dt, same for y
+
+Example 1: proposedSolution([{"mass":1e12,"x":0,"y":0,"vx":0,"vy":0},{"mass":1e12,"x":10,"y":0,"vx":0,"vy":1}], 0.1, 2) — two equal masses, one starts moving perpendicular to separation. Return 3 frames.
+Example 2: proposedSolution([{"mass":1e14,"x":0,"y":0,"vx":0,"vy":0}], 0.1, 5) — single massive body, should stay stationary. All frames identical.`,
+    language: "python",
+    complexity: "very-hard",
+  },
+  // ── Machine learning from scratch ──────────────────────────────────────────
+  {
+    name: "neural-network-xor",
+    description: `Write proposedSolution(X) implementing a pre-trained 2-layer neural network for XOR. The network has: input layer (2 neurons), one hidden layer with 2 neurons (sigmoid activation), output layer with 1 neuron (sigmoid activation). Use these EXACT hardcoded weights and biases:
+
+W1 = [[20, -20], [20, -20]]  (2×2, input→hidden weights)
+b1 = [-10, 30]               (1×2, hidden biases)
+W2 = [[20], [20]]            (2×1, hidden→output weights)
+b2 = [-30]                   (1×1, output bias)
+
+Sigmoid: σ(z) = 1/(1 + exp(-z))
+
+Forward pass for a single row [x1, x2]:
+  z1 = [x1, x2] @ W1 + b1    (1×2 matrix)
+  a1 = σ(z1)                  (1×2, element-wise sigmoid)
+  z2 = a1 @ W2 + b2           (1×1 scalar)
+  a2 = σ(z2)                  (scalar output)
+  Return round(a2) — nearest integer (0 or 1)
+
+X is a list of [x1, x2] rows. Return a list of 0/1 predictions, one per input row.
+
+Example 1: proposedSolution([[0,0],[0,1],[1,0],[1,1]]) → [0, 1, 1, 0]
+Example 2: proposedSolution([[0,0]]) → [0]
+Example 3: proposedSolution([[1,1],[0,0]]) → [0, 0]`,
+    language: "python",
+    complexity: "hard",
   },
 ];

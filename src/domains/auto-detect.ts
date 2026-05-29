@@ -216,6 +216,12 @@ export async function detectOrGenerateDomain(problem: string): Promise<AutoDetec
 		console.log(`[auto-detect] Override: "${domain}" needs custom oracle, rejecting classifier match`);
 		domain = null;
 	}
+	// Compression domain only fits problems asking for compress/decompress
+	// function pairs. Huffman/prefix-code problems need custom oracles.
+	if (domain === "compression" && !/\b(?:compress\s*\(|decompress\s*\(|compression\s+function|compression\s+utility)\b/i.test(problem)) {
+		console.log(`[auto-detect] Override: "${domain}" but no compress/decompress API requested, rejecting classifier match`);
+		domain = null;
+	}
 
 	if (domain && confidence >= 0.7) {
 		const existing = getDomainSpec(domain);
@@ -318,90 +324,6 @@ export async function detectOrGenerateDomain(problem: string): Promise<AutoDetec
 			const spec = await generateCustomDomain(problem);
 			if (spec) {
 				return { domain: spec.name, spec, wasGenerated: true, domainType: type };
-			}
-		}
-	}
-
-	// ── Sorting & compression keyword detection ──────────────────────────────
-	// These are registered domains with their own verification pipelines.
-	// Must match BEFORE the code-domain keywords below so they don't fall
-	// through to custom oracle generation.
-	const sortLower = probLower;
-	const isSortingImpl =
-		/\b(merge\s*sort|quicksort|bubble\s*sort|insertion\s*sort|selection\s*sort|heap\s*sort|radix\s*sort|shell\s*sort|sorting\s+algorithm|implement\b[^.!?]*\bsorts?\b.*sort|write\b[^.!?]*\bmerge\s*sort|write\b[^.!?]*\bquicksort)\b/i.test(sortLower) &&
-		!/topological\s*sort|sort.*topological|sort.*graph|sort.*dag/i.test(sortLower) &&
-		!/kth\s+largest|find.*(?:kth|median)|nth\s+(?:largest|smallest)|comparator|custom\s+sort/i.test(sortLower);
-	if (isSortingImpl) {
-		const existing = getDomainSpec("sorting");
-		if (existing) {
-			console.log(`[auto-detect] Keyword match → sorting domain`);
-			return { domain: "sorting", spec: existing, wasGenerated: false };
-		}
-	}
-
-	const compLower = probLower;
-	if (/\b(?:lossless\s+compression|compress\s+(?:and|then)\s+decompress|huffman\s+coding|lempel|deflate|gzip|bzip2|lz77|lz78|lzw|run-length\s+encod|data\s+compression\s+algorithm)\b/i.test(compLower)) {
-		const existing = getDomainSpec("compression");
-		if (existing) {
-			console.log(`[auto-detect] Keyword match → compression domain`);
-			return { domain: "compression", spec: existing, wasGenerated: false };
-		}
-	}
-
-	// ── CLI Project keyword detection ─────────────────────────────────────
-	// Compiler, interpreter, database, and CLI tool projects use the
-	// cli-project domain which handles multi-file Python CLI verification.
-	const cliProjectKeywords = [
-		"programming language", "compiler for", "interpreter for",
-		"create a language", "design a language", "build a shell",
-		"build a database", "command-line tool", "command line tool",
-		"cli tool", "virtual machine", "bytecode interpreter",
-		"lexer and parser", "tokenizer and parser",
-		"write a compiler", "write an interpreter", "implement a language",
-		"type checker", "type system", "code generator",
-	];
-	if (cliProjectKeywords.some(kw => probLower.includes(kw))) {
-		const existing = getDomainSpec("cli-project");
-		if (existing) {
-			console.log(`[auto-detect] Keyword match → cli-project domain (Python CLI verification)`);
-			return { domain: "cli-project", spec: existing, wasGenerated: false, domainType: "cli-project" };
-		}
-	}
-
-	// ── Project / Game keyword detection ─────────────────────────────────────
-	// Games, web apps, and multi-file projects use the registered project domain
-	// which handles multi-file HTML/JS/CSS verification.
-	const projectKeywords = [
-		"game", "snake", "pong", "tetris", "platformer", "breakout",
-		"maze", "pac-man", "space invaders", "flappy bird",
-		"html game", "js game", "javascript game", "web game",
-		"browser game", "canvas game", "video game", "arcade game",
-		"build a game", "create a game", "make a game",
-		"html/css", "web app", "single page app", "single-page app",
-		"frontend", "front-end", "interactive web", "web page with",
-	];
-	if (projectKeywords.some(kw => probLower.includes(kw))) {
-		const existing = getDomainSpec("project");
-		if (existing) {
-			console.log(`[auto-detect] Keyword match → project domain (multi-file HTML/JS verification)`);
-			return { domain: "project", spec: existing, wasGenerated: false, domainType: "project" };
-		}
-	}
-
-	// ── Document domain keyword detection (LAST — fallback for document-type
-	// problems that don't match any code domain above) ────────────────────────
-	const docKeywords: [string, string[]][] = [
-		["research", ["research paper", "write a report", "literature review", "analyze the", "compare the", "investigation of"]],
-		["geography", ["demographic", "country compar", "population", "gdp per capita", "land area", "geographic fact", "capital of", "square kilometer", "square mile"]],
-		["law", ["legal analysis", "legal implications", "statute", "jurisdiction", "constitutional", "court ruling", "case law", "legislat"]],
-		["history", ["historical event", "history of", "ancient", "medieval", "world war", "cold war", "renaissance", "industrial revolution", "century"]],
-	];
-	for (const [domainName, keywords] of docKeywords) {
-		if (keywords.some(kw => probLower.includes(kw))) {
-			const existing = getDomainSpec(domainName);
-			if (existing) {
-				console.log(`[auto-detect] Keyword match → document domain "${domainName}" (structural verification)`);
-				return { domain: domainName, spec: existing, wasGenerated: false };
 			}
 		}
 	}

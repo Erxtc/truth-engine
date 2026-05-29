@@ -7,6 +7,8 @@
  *   bun run src/test/benchmark.ts --tier=hard            # all in one tier
  *   PROBLEM_FILTER="dijkstra|nash" bun run src/test/benchmark.ts
  *   bun run src/test/benchmark.ts fibonacci dijkstra     # specific problems
+ *   bun run src/test/benchmark.ts --consistency          # run each problem 2x, flag flaky
+ *   CONSISTENCY_RUNS=3 bun run src/test/benchmark.ts --consistency --all
  */
 
 import { PROBLEMS, type TestProblem } from "./benchmark-problems";
@@ -22,11 +24,9 @@ const ROOT = resolve(dirname(import.meta.filename!), "..", "..");
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function lastLogPath(): string | null {
-  // latest.log is a symlink — resolve it and use as the path itself
-  // readFileSync follows symlinks, so just check if it exists
   const latest = resolve(ROOT, "latest.log");
   try {
-    readFileSync(latest, "utf-8"); // probe — just need to know it exists
+    readFileSync(latest, "utf-8");
     return latest;
   } catch {
     return null;
@@ -36,7 +36,7 @@ function lastLogPath(): string | null {
 function countCalls(logPath: string): number {
   try {
     const content = readFileSync(logPath, "utf-8");
-    return (content.match(/^── STATUS:/gm) || []).length;
+    return (content.match(/^\[.+\] CALL #\d+/gm) || []).length;
   } catch {
     return 0;
   }
@@ -91,7 +91,6 @@ function runPipeline(problem: TestProblem): { passed: boolean; calls: number; to
       passed = /✓ SOLVED|PROBLEM SOLVED|FINAL ANSWER/i.test(output);
     }
 
-    // Parse calls/tokens/cost from the latest log
     const log = lastLogPath();
     const calls = log ? countCalls(log) : 0;
     const tokens = log ? totalTokens(log) : 0;
@@ -99,7 +98,6 @@ function runPipeline(problem: TestProblem): { passed: boolean; calls: number; to
 
     return { passed, calls, tokens, cost, durationMs: duration };
   } catch (err: any) {
-    // Timeout or crash — still count what we have
     const log = lastLogPath();
     const calls = log ? countCalls(log) : 0;
     const tokens = log ? totalTokens(log) : 0;
@@ -110,8 +108,9 @@ function runPipeline(problem: TestProblem): { passed: boolean; calls: number; to
 
 // ── Filter logic ──────────────────────────────────────────────────────────────
 
+let isConsistency = false;
+
 function getProblems(args: string[]): { problems: TestProblem[]; label: string } {
-  // Parse args
   let mode: "all" | "failing" | "tier" | "named" = "named";
   let tierFilter: string | null = null;
   const names: string[] = [];
@@ -119,6 +118,7 @@ function getProblems(args: string[]): { problems: TestProblem[]; label: string }
   for (const arg of args) {
     if (arg === "--all") mode = "all";
     else if (arg === "--failing") mode = "failing";
+    else if (arg === "--consistency") { isConsistency = true; }
     else if (arg.startsWith("--tier=")) { mode = "tier"; tierFilter = arg.slice(7); }
     else if (arg.startsWith("--")) continue;
     else names.push(arg);
@@ -130,7 +130,6 @@ function getProblems(args: string[]): { problems: TestProblem[]; label: string }
   if (mode === "named" && names.length > 0) {
     problems = PROBLEMS.filter(p => names.some(n => p.name === n || p.name.includes(n)));
   } else if (mode === "failing") {
-    // Read from efficiency state to find failing problems
     try {
       const statePath = resolve(ROOT, "src/analysis/.efficiency-state.json");
       const state = JSON.parse(readFileSync(statePath, "utf-8"));
@@ -142,7 +141,7 @@ function getProblems(args: string[]): { problems: TestProblem[]; label: string }
       }
       if (failingNames.length > 0) {
         problems = PROBLEMS.filter(p => failingNames.includes(p.name));
-      } // else: no previous data, run all
+      }
     } catch {
       console.log("  No previous efficiency data — running all problems");
     }
@@ -158,17 +157,98 @@ function getProblems(args: string[]): { problems: TestProblem[]; label: string }
   return { problems, label: mode === "failing" ? "failing" : mode === "tier" ? `tier=${tierFilter}` : mode === "all" ? "all" : names.join(",") };
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
+// ── Consistency check ────────────────────────────────────────────────────────
 
-async function main() {
-  const args = process.argv.slice(2);
-  const { problems, label } = getProblems(args);
+interface ConsistencyResult {
+  name: string;
+  complexity: string;
+  runs: { passed: boolean; calls: number; tokens: number; durationMs: number }[];
+  stable: boolean;
+  verdict: "stable-pass" | "stable-fail" | "flaky";
+}
 
-  if (problems.length === 0) {
-    console.log("No problems to run.");
-    return;
+async function runConsistencyCheck(problems: TestProblem[], runCount: number): Promise<void> {
+  console.log(`\n═══════════════════════════════════════════════════════════════`);
+  console.log(`  CONSISTENCY CHECK — ${problems.length} problem(s) × ${runCount} runs each`);
+  console.log(`  Flaky = different results across runs (pass vs fail)`);
+  console.log(`═══════════════════════════════════════════════════════════════\n`);
+
+  const results: ConsistencyResult[] = [];
+  const startTime = Date.now();
+
+  for (let i = 0; i < problems.length; i++) {
+    const p = problems[i]!;
+    const progress = `[${i + 1}/${problems.length}]`;
+    const runs: ConsistencyResult["runs"] = [];
+
+    for (let r = 0; r < runCount; r++) {
+      process.stdout.write(`${progress} ${p.name} run ${r + 1}/${runCount}… `);
+      const pl = runPipeline(p);
+      const icon = pl.passed ? "PASS" : "FAIL";
+      console.log(`${icon} (${pl.calls}c ${formatTokens(pl.tokens)} ${formatMs(pl.durationMs)})`);
+      runs.push({ passed: pl.passed, calls: pl.calls, tokens: pl.tokens, durationMs: pl.durationMs });
+    }
+
+    const allPassed = runs.every(r => r.passed);
+    const allFailed = runs.every(r => !r.passed);
+    const stable = allPassed || allFailed;
+    const verdict = allPassed ? "stable-pass" : allFailed ? "stable-fail" : "flaky";
+
+    results.push({ name: p.name, complexity: p.complexity, runs, stable, verdict });
   }
 
+  const elapsed = Date.now() - startTime;
+
+  console.log(`\n═══════════════════════════════════════════════════════════════`);
+  console.log(`  CONSISTENCY REPORT`);
+  console.log(`═══════════════════════════════════════════════════════════════`);
+
+  const stablePass = results.filter(r => r.verdict === "stable-pass");
+  const stableFail = results.filter(r => r.verdict === "stable-fail");
+  const flaky = results.filter(r => r.verdict === "flaky");
+
+  if (stablePass.length > 0) {
+    console.log(`\n  ✓ Stable-pass (${stablePass.length} problems) — always passes:`);
+    for (const r of stablePass) {
+      const calls = r.runs.map(run => run.calls).join(",");
+      console.log(`    ${r.name.padEnd(24)} ${r.runs.length}x PASS  calls=[${calls}]`);
+    }
+  }
+
+  if (stableFail.length > 0) {
+    console.log(`\n  ✗ Stable-fail (${stableFail.length} problems) — consistently failing:`);
+    for (const r of stableFail) {
+      const calls = r.runs.map(run => run.calls).join(",");
+      console.log(`    ${r.name.padEnd(24)} ${r.runs.length}x FAIL  calls=[${calls}]`);
+    }
+  }
+
+  if (flaky.length > 0) {
+    console.log(`\n  ⚡ FLAKY (${flaky.length} problems) — NON-DETERMINISTIC RESULTS:`);
+    for (const r of flaky) {
+      const pattern = r.runs.map(run => run.passed ? "PASS" : "FAIL").join(" → ");
+      console.log(`    ${r.name.padEnd(24)} ${pattern}`);
+    }
+    console.log(`\n  These problems sometimes pass and sometimes fail WITHOUT code changes.`);
+    console.log(`  Root causes to investigate:`);
+    console.log(`    - LLM-generated oracle with ambiguous acceptance criteria`);
+    console.log(`    - Stochastic problem without proper seeding`);
+    console.log(`    - Race conditions or timeout variance`);
+    console.log(`    - LLM non-determinism (temperature > 0)`);
+  }
+
+  if (flaky.length === 0) {
+    console.log(`\n  ✓ No flaky problems detected — benchmark is consistent.`);
+  }
+
+  console.log(`\n  Stable: ${stablePass.length + stableFail.length}/${results.length}  Flaky: ${flaky.length}/${results.length}`);
+  console.log(`  Total time: ${formatMs(elapsed)}`);
+  console.log(`═══════════════════════════════════════════════════════════════\n`);
+}
+
+// ── Benchmark ─────────────────────────────────────────────────────────────────
+
+async function runBenchmark(problems: TestProblem[], label: string): Promise<void> {
   console.log(`\n═══════════════════════════════════════════════════════════════`);
   console.log(`  BENCHMARK — ${problems.length} problem(s) (${label})`);
   console.log(`═══════════════════════════════════════════════════════════════\n`);
@@ -187,7 +267,6 @@ async function main() {
     const progress = `[${i + 1}/${problems.length}]`;
     console.log(`${progress} ${p.name} (${p.complexity})…`);
 
-    // ── Pipeline (includes baseline comparison internally) ──
     const pl = runPipeline(p);
     const costStr = pl.cost > 0 ? `  ${formatCost(pl.cost)}` : '';
     console.log(`  ${pl.passed ? "PASS" : "FAIL"} in ${pl.calls} calls, ${formatTokens(pl.tokens)}${costStr}, ${formatMs(pl.durationMs)}`);
@@ -200,7 +279,7 @@ async function main() {
       pipelineCalls: pl.calls,
       pipelineTokens: pl.tokens,
       pipelineCost: pl.cost,
-      baselineCalls: 1, // placeholder — pipeline runs baseline internally
+      baselineCalls: 1,
       llmAloneCalls: 1,
       passed: pl.passed,
     });
@@ -213,7 +292,6 @@ async function main() {
 
   const elapsed = Date.now() - startTime;
 
-  // ── Summary ───────────────────────────────────────────────────────────────
   console.log(`\n═══════════════════════════════════════════════════════════════`);
   console.log(`  SUMMARY`);
   console.log(`═══════════════════════════════════════════════════════════════`);
@@ -229,7 +307,6 @@ async function main() {
   }
   console.log(`  Total time:     ${formatMs(elapsed)}`);
 
-  // Per-problem detail
   console.log(`\n  Per-problem:`);
   for (const r of results) {
     const icon = r.passed ? "✓" : "✗";
@@ -237,12 +314,30 @@ async function main() {
     console.log(`    ${icon} ${r.name.padEnd(22)} ${String(r.pipelineCalls).padStart(2)} calls  ${formatTokens(r.pipelineTokens).padStart(8)}${costLine}`);
   }
 
-  // ── Persist ───────────────────────────────────────────────────────────────
   try {
     const diff = recordEfficiency(results);
     printEfficiencyReport(diff);
   } catch (err) {
     console.log(`  [efficiency] Failed to record: ${(err as Error).message}`);
+  }
+}
+
+// ── Entry point ───────────────────────────────────────────────────────────────
+
+async function main() {
+  const args = process.argv.slice(2);
+  const { problems, label } = getProblems(args);
+
+  if (problems.length === 0) {
+    console.log("No problems to run.");
+    return;
+  }
+
+  if (isConsistency) {
+    const runCount = parseInt(process.env.CONSISTENCY_RUNS || "2", 10);
+    await runConsistencyCheck(problems, Math.max(2, Math.min(runCount, 5)));
+  } else {
+    await runBenchmark(problems, label);
   }
 }
 

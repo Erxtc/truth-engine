@@ -6,7 +6,7 @@ export const artifactStatuses = ["active", 'lemma', "dead", "superseded"] as con
 export const relationTypes = ["depends_on", "contradicts", "verifies", "refines", "subsumes", "cites", "generalizes", "specializes"] as const;
 export const executionTypes = ["code_run", "project", "proof_check", "simulation", "benchmark"] as const;
 export const problemStatuses = ["open", "partially_solved", "solved"] as const;
-export const agentRoles = ["proposer", "critic", "judge", "executor", "formalizer", "synthesist", "curator"] as const;
+export const agentRoles = ["task-agent", "repair", "supervisor", "baseline"] as const;
 
 export const problems = sqliteTable("problems", {
 	id: text("id").primaryKey().notNull(),

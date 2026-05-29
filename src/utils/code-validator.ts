@@ -97,91 +97,47 @@ export function validateAndFixC(source: string): ValidationResult {
 	};
 }
 
-export function validateAndFixTs(source: string): ValidationResult {
-	const check = compileTs(source);
-	if (check.ok) return { source, ok: true, autoFixed: false };
-	return {
-		source,
-		ok: false,
-		error: formatJsError(source, check.error ?? "unknown error"),
-		autoFixed: false,
-	};
+// ── Shared compile helper ────────────────────────────────────────────────────
+
+function compileWith(
+  source: string,
+  filePrefix: string,
+  fileSuffix: string,
+  buildCmd: (tmpPath: string) => string,
+): { ok: boolean; error?: string } {
+  const tmp = path.join(os.tmpdir(), `${filePrefix}_${process.pid}_${Date.now()}${fileSuffix}`);
+  try {
+    fs.writeFileSync(tmp, source);
+    execSync(buildCmd(tmp), { stdio: "pipe", timeout: 5000 });
+    return { ok: true };
+  } catch (err: any) {
+    const raw = (err.stderr?.toString() ?? err.stdout?.toString() ?? err.message ?? "");
+    const msg = raw.replace(tmp, "<code>");
+    return { ok: false, error: msg };
+  } finally {
+    try { fs.unlinkSync(tmp); } catch {}
+  }
 }
 
 // ── Python compile check ─────────────────────────────────────────────────────
 
 function compilePython(source: string): { ok: boolean; error?: string } {
-	const tmp = path.join(os.tmpdir(), `pycheck_${process.pid}_${Date.now()}.py`);
-	try {
-		fs.writeFileSync(tmp, source);
-		execSync(`python3 -m py_compile ${JSON.stringify(tmp)}`, { stdio: "pipe", timeout: 5000 });
-		return { ok: true };
-	} catch (err: any) {
-		const msg = (err.stderr?.toString() ?? err.message ?? "").replace(tmp, "<code>");
-		return { ok: false, error: msg };
-	} finally {
-		try { fs.unlinkSync(tmp); } catch {}
-	}
+  return compileWith(source, "pycheck", ".py",
+    (t) => `python3 -m py_compile ${JSON.stringify(t)}`);
 }
 
 // ── C syntax check ───────────────────────────────────────────────────────────
 
 function compileC(source: string): { ok: boolean; error?: string } {
-	const tmp = path.join(os.tmpdir(), `ccheck_${process.pid}_${Date.now()}.c`);
-	try {
-		fs.writeFileSync(tmp, source);
-		// -fsyntax-only: only parse, do not compile or link
-		execSync(`gcc -fsyntax-only -Wall -Wextra -x c ${JSON.stringify(tmp)} 2>&1`, { stdio: "pipe", timeout: 5000, shell: true as any });
-		return { ok: true };
-	} catch (err: any) {
-		const raw = err.stdout?.toString() ?? err.stderr?.toString() ?? err.message ?? "";
-		const msg = raw.split(tmp).join("<code>");
-		return { ok: false, error: msg };
-	} finally {
-		try { fs.unlinkSync(tmp); } catch {}
-	}
-}
-
-// ── TypeScript syntax check ──────────────────────────────────────────────────
-
-function compileTs(source: string): { ok: boolean; error?: string } {
-	// Fallback to JS check if tsc not available
-	if (!hasTsc()) return compileJs(source);
-	const tmp = path.join(os.tmpdir(), `tscheck_${process.pid}_${Date.now()}.ts`);
-	try {
-		fs.writeFileSync(tmp, source);
-		execSync(`tsc --noEmit --allowJs --strict --target ES2020 ${JSON.stringify(tmp)}`, { stdio: "pipe", timeout: 10000 });
-		return { ok: true };
-	} catch (err: any) {
-		const msg = (err.stdout?.toString() ?? err.stderr?.toString() ?? err.message ?? "").replace(tmp, "<code>");
-		return { ok: false, error: msg };
-	} finally {
-		try { fs.unlinkSync(tmp); } catch {}
-	}
-}
-
-let _hasTsc: boolean | null = null;
-function hasTsc(): boolean {
-	if (_hasTsc !== null) return _hasTsc;
-	try { execSync("tsc --version", { stdio: "pipe", timeout: 3000 }); _hasTsc = true; }
-	catch { _hasTsc = false; }
-	return _hasTsc;
+  return compileWith(source, "ccheck", ".c",
+    (t) => `gcc -fsyntax-only -Wall -Wextra -x c ${JSON.stringify(t)}`);
 }
 
 // ── JS syntax check ──────────────────────────────────────────────────────────
 
 function compileJs(source: string): { ok: boolean; error?: string } {
-	const tmp = path.join(os.tmpdir(), `jscheck_${process.pid}_${Date.now()}.js`);
-	try {
-		fs.writeFileSync(tmp, source);
-		execSync(`node --check ${JSON.stringify(tmp)}`, { stdio: "pipe", timeout: 5000 });
-		return { ok: true };
-	} catch (err: any) {
-		const msg = (err.stderr?.toString() ?? err.message ?? "").replace(tmp, "<code>");
-		return { ok: false, error: msg };
-	} finally {
-		try { fs.unlinkSync(tmp); } catch {}
-	}
+  return compileWith(source, "jscheck", ".js",
+    (t) => `node --check ${JSON.stringify(t)}`);
 }
 
 // ── Text-level fixes ─────────────────────────────────────────────────────────
@@ -215,7 +171,6 @@ function normalizeIndent(src: string): string {
 		if (!line.trim()) { result.push(line); continue; }
 
 		const startsWithTab = line.startsWith("\t");
-		const prevWasTab = i > 0 && (lines[i - 1]?.startsWith("\t") || !lines[i - 1]?.trim());
 
 		if (startsWithTab) {
 			if (!inTabSection) {

@@ -425,7 +425,7 @@ async function main() {
   if (!allTestsFailed) {
     console.log("\n── Repair ──");
     const baselineProposal = proposalFromCode(baselineResult.code, baselineLang);
-    const baselineExec: ExecutionResult = { passed: false, reason: baselineResult.reason, iterations: 1 };
+    const baselineExec: ExecutionResult = { passed: false, reason: baselineResult.reason, iterations: 1, failureDetail: baselineResult.failureDetail };
 
     try {
       const repaired = await runRepair(ctx, baselineProposal, baselineExec);
@@ -486,11 +486,15 @@ async function main() {
   const enableWebSearch = workflow?.enableWebSearch ?? false;
 
   // Build context from the failed baseline so the task-agent doesn't start blind.
-  // Include the baseline code + oracle failures so it knows what was tried.
+  // Include the baseline code + oracle failures + per-test results.
   const prevLang = baselineLang;
+  const fd = baselineResult.failureDetail;
+  const testSummary = fd && fd.failures.length > 0
+    ? `\n\nFailed tests (${fd.failedCount}/${fd.passedCount + fd.failedCount}):\n${fd.failures.map(f => `  ❌ ${f}`).join("\n")}`
+    : `\n\nOracle output: ${baselineResult.reason.slice(0, 300)}`;
   const previousAttemptSummary = allTestsFailed
-    ? `The 1-shot baseline returned code that failed ALL tests. Here's what it produced:\n\`\`\`${prevLang}\n${baselineResult.code.slice(0, 500)}\n\`\`\`\n\nOracle output: ${baselineResult.reason.slice(0, 300)}\n\nThis approach was FUNDAMENTALLY WRONG. Do NOT try the same approach. Read the problem carefully, understand what's actually being asked, and implement the correct algorithm from scratch.`
-    : `The 1-shot baseline returned code that passed SOME tests but failed others. Here's what it produced:\n\`\`\`${prevLang}\n${baselineResult.code.slice(0, 500)}\n\`\`\`\n\nOracle output: ${baselineResult.reason.slice(0, 300)}\n\nStart by understanding WHY these specific tests failed. Fix the bugs in the approach, or if the approach is fundamentally wrong, start fresh.`;
+    ? `The 1-shot baseline returned code that failed ALL tests. Here's what it produced:\n\`\`\`${prevLang}\n${baselineResult.code.slice(0, 500)}\n\`\`\`${testSummary}\n\nThis approach was FUNDAMENTALLY WRONG. Do NOT try the same approach. Read the problem carefully, understand what's actually being asked, and implement the correct algorithm from scratch.`
+    : `The 1-shot baseline returned code that passed SOME tests but failed others. Here's what it produced:\n\`\`\`${prevLang}\n${baselineResult.code.slice(0, 500)}\n\`\`\`${testSummary}\n\nStart by understanding WHY these specific tests failed. Fix the bugs in the approach, or if the approach is fundamentally wrong, start fresh.`;
 
   const taskResult = await runTaskAgent(problem, {
     domain,

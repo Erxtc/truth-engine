@@ -6,7 +6,7 @@
 import * as v from "valibot";
 import { queryReasoning } from "../llm";
 import type { DomainSpec } from "../executors/domains/registry";
-import type { Proposal, WorkingContext } from "../core/types";
+import type { Proposal, WorkingContext, ExecutionResult } from "../core/types";
 import type { Artifact } from "../db/schema";
 import { validateAndFixPython } from "../utils/code-validator";
 import { normalizeEscapes } from "../utils/general";
@@ -25,6 +25,8 @@ export interface BaselineResult {
 	reason: string;
 	durationMs: number;
 	llmMs: number;
+	/** Structured per-test failure detail surfaced to the repair agent. */
+	failureDetail?: ExecutionResult["failureDetail"];
 }
 
 export async function runBaseline(
@@ -145,14 +147,34 @@ Return ONLY valid JSON:
 
 	let passed = false;
 	let reason = "oracle-not-run";
+	let failureDetail: ExecutionResult["failureDetail"] | undefined;
 
 	try {
 		const execResult = await domainSpec.run(fakeProposal, fakeContext, fakeArtifact);
 		passed = execResult.overallPassed;
 		reason = execResult.stages[0]?.reason ?? (passed ? "ok" : "failed");
+
+		// ── Extract per-test failure detail for repair ──
+		const stageResults = execResult.stages.flatMap(s => s.testResults ?? []);
+		const failedTests = stageResults.filter(t => !t.passed);
+		if (failedTests.length > 0 || !passed) {
+			// Collect the full stdout/stderr from oracle execution stages
+			const oracleOutput = execResult.stages
+				.map(s => s.reason ?? "")
+				.filter(Boolean)
+				.join("\n") || reason;
+
+			failureDetail = {
+				passedCount: stageResults.filter(t => t.passed).length,
+				failedCount: failedTests.length,
+				failures: failedTests.map(t => t.name),
+				oracleFullOutput: oracleOutput.slice(0, 2000),
+				oracleSource: oracleSpec,
+			};
+		}
 	} catch (err) {
 		reason = `oracle-error: ${err instanceof Error ? err.message.slice(0, 100) : String(err)}`;
 	}
 
-	return { code, language: lang, explanation, passed, reason, durationMs: Date.now() - t0, llmMs };
+	return { code, language: lang, explanation, passed, reason, durationMs: Date.now() - t0, llmMs, failureDetail };
 }

@@ -845,8 +845,9 @@ export async function runTaskAgent(
       messages.push({ role: "observation", content: observation });
 
       const turnKey = toolCall.tool === "run_command" ? (toolCall.args.command || "").slice(0, 40)
-        : toolCall.tool === "write_file" ? (toolCall.args.path || "")
-        : "";
+        : toolCall.tool === "write_file" || toolCall.tool === "edit_file" ? (toolCall.args.path || "")
+        : toolCall.tool === "read_file" ? (toolCall.args.path || toolCall.args.url || "").slice(0, 40)
+        : (toolCall.args.query || toolCall.args.url || toolCall.args.task || "").slice(0, 40);
       turnHistory.push({ tool: toolCall.tool, key: turnKey, summary: observation.slice(0, 60) });
 
       // Nudge if model wrote solution code but hasn't tested after 2+ turns

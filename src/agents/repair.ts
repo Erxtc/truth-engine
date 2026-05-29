@@ -23,11 +23,26 @@ async function runRepairJson(
   const exe = failedProposal.executable;
   if (exe.type !== "code") return null;
 
+  // ── Build structured failure context ──
+  const fd = executionResult.failureDetail;
+  let failedTestList = "";
+  if (fd && fd.failures.length > 0) {
+    const names = fd.failures.map(f => `  ❌ ${f}`).join("\n");
+    failedTestList = `\nFAILED TESTS (${fd.failedCount}/${fd.passedCount + fd.failedCount}):\n${names}`;
+  } else {
+    failedTestList = `\nFailure: ${executionResult.reason}`;
+  }
+
+  let oracleOutput = "";
+  if (fd?.oracleFullOutput && fd.oracleFullOutput.length > 5) {
+    oracleOutput = `\n\nVERIFICATION OUTPUT:\n\`\`\`\n${fd.oracleFullOutput.slice(0, 1500)}\n\`\`\``;
+  }
+
   const prompt = `
 You are a code repair agent. A proposal failed execution. Fix the bug.
 
 Domain: ${ctx.domain}
-Failure: ${executionResult.reason}
+${failedTestList}${oracleOutput}
 ${executionResult.metrics ? `Metrics: ${JSON.stringify(executionResult.metrics)}` : ""}
 
 The code that failed:
@@ -38,7 +53,7 @@ ${exe.source}
 Original hypothesis: ${failedProposal.hypothesis}
 
 YOUR JOB:
-1. Identify the EXACT bug that caused the failure
+1. Identify the EXACT bug that caused the failure from the test results above
 2. Fix ONLY that bug — do not rewrite the approach unless the approach is fundamentally broken
 3. Keep the same function signature and export name
 4. Write plain ${langHint === "js" ? "JavaScript (no TypeScript)" : "Python"}
@@ -88,16 +103,25 @@ function buildRepairCodePrompt(
   const exe = failedProposal.executable;
   if (exe.type !== "code") return "";
 
-  // Include raw oracle output so the repair agent can see exact failure details
-  let oracleOutput = "";
+  // ── Build structured failure context ──
   const fd = executionResult.failureDetail;
-  if (fd?.oracleFullOutput) {
-    oracleOutput = `\nRAW ORACLE OUTPUT:\n\`\`\`\n${fd.oracleFullOutput.slice(0, 1500)}\n\`\`\``;
+
+  // Which specific tests failed (by name)
+  let failedTestList = "";
+  if (fd && fd.failures.length > 0) {
+    const names = fd.failures.map(f => `  ❌ ${f}`).join("\n");
+    failedTestList = `\nFAILED TESTS (${fd.failedCount}/${fd.passedCount + fd.failedCount}):\n${names}`;
+  } else if (executionResult.reason) {
+    failedTestList = `\nFAILURE SUMMARY: ${executionResult.reason.slice(0, 300)}`;
   }
 
-  // Include oracle source (the verification/test code) — shows exact test inputs/expected outputs
-  // Prefer failureDetail.oracleSource (from custom oracle artifacts),
-  // fall back to ctx.oracle_spec (from DomainSpec.testSource)
+  // Full oracle output (stdout/stderr from verification)
+  let oracleOutput = "";
+  if (fd?.oracleFullOutput && fd.oracleFullOutput.length > 5) {
+    oracleOutput = `\n\nVERIFICATION OUTPUT:\n\`\`\`\n${fd.oracleFullOutput.slice(0, 1500)}\n\`\`\``;
+  }
+
+  // Oracle source code — the actual verification tests
   let oracleSpecBlock = "";
   const oracleSrc = fd?.oracleSource ?? ctx.oracle_spec;
   if (oracleSrc) {
@@ -106,17 +130,14 @@ function buildRepairCodePrompt(
     const truncated = oracleSrc.length > 1200
       ? oracleSrc.slice(0, 1200) + "\n// ... (truncated)"
       : oracleSrc;
-    oracleSpecBlock = `\n\nORACLE VERIFICATION CODE (study the test cases to understand expected inputs/outputs):\n\`\`\`${lang}\n${truncated}\n\`\`\``;
+    oracleSpecBlock = `\n\nORACLE VERIFICATION CODE:\n\`\`\`${lang}\n${truncated}\n\`\`\``;
   }
 
   return `
 You are a code repair agent. A Python function failed during testing. Fix the bug.
 
 Domain: ${ctx.domain}
-
-THE ERROR:
-${executionResult.reason}
-${oracleOutput}${oracleSpecBlock}
+${failedTestList}${oracleOutput}${oracleSpecBlock}
 
 THE BROKEN CODE:
 \`\`\`python
@@ -126,8 +147,8 @@ ${exe.source}
 Original hypothesis: ${failedProposal.hypothesis}
 
 YOUR JOB:
-1. Identify the EXACT bug that caused the failure from the error message and oracle output
-2. Fix ONLY that bug — do NOT rewrite the approach unless it is fundamentally broken
+1. Identify the EXACT bug from the failed test names and verification output
+2. Fix ONLY the bug — do NOT rewrite the approach unless fundamentally broken
 3. Keep the SAME function signature: \`def proposedSolution(...)\`
 4. Use proper Python: 4-space indentation, newlines after def/if/for/while/else
 5. NEVER write compound statements on one line (no semicolons between statements)

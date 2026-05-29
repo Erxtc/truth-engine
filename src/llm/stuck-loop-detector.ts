@@ -122,35 +122,39 @@ This is your zoom-out #${this.zoomOutCount}. After 2 zoom-outs the task terminat
   /** Detect repeating action SEQUENCES — the most common cache-poisoning pattern.
    *  Example: write_file("x.py") → ls → node oracle.js → read_file("oracle.js") → repeat.
    *  SameActionLoop misses it because each action is different.
-   *  CommandCycle misses it because the cycle includes write_file and read_file. */
+   *  CommandCycle misses it because the cycle includes write_file and read_file.
+   *
+   *  Uses array comparison (not string matching) to avoid separator alignment
+   *  bugs that made the old string-based approach miss cycles like
+   *  run_command → read_file repeating 30+ times. */
   checkSequenceLoop(history: TurnRecord[]): string | null {
     // Need enough history: at least 3 repetitions of a 2-action sequence = 6 turns
     if (history.length < 6) return null;
     // Try sequence lengths 2, 3, 4 — look for 3+ repetitions
     for (const seqLen of [2, 3, 4]) {
       if (history.length < seqLen * 3) continue;
-      const recent = history.slice(-seqLen * 3);
-      // Extract the action "signature" (tool:key) for each turn
-      const sigs = recent.map(t => `${t.tool}:${t.key}`);
-      // Check if the last seqLen actions repeat the same pattern 3 times
-      const pattern = sigs.slice(-seqLen).join("→");
-      const allSigs = sigs.join("→");
-      // Count non-overlapping occurrences of the pattern
+      const sigs = history.map(t => `${t.tool}:${t.key}`);
+      const pattern = sigs.slice(-seqLen);
+      // Count non-overlapping occurrences of the pattern starting from the end
       let count = 0;
-      let pos = 0;
-      while (pos <= allSigs.length - pattern.length) {
-        if (allSigs.slice(pos, pos + pattern.length) === pattern) {
+      let i = sigs.length - seqLen;
+      while (i >= 0 && i + seqLen <= sigs.length) {
+        let match = true;
+        for (let j = 0; j < seqLen; j++) {
+          if (sigs[i + j] !== pattern[j]) { match = false; break; }
+        }
+        if (match) {
           count++;
-          pos += pattern.length; // non-overlapping
+          i -= seqLen; // non-overlapping: skip back by full pattern
         } else {
-          pos++;
+          break; // only count consecutive repetitions from the end
         }
       }
       if (count >= 3) {
         if (this.zoomOutCount >= 2) {
           return this.zoomOutTerminated(`repeating the same ${seqLen}-action sequence ${count} times`);
         }
-        const actionNames = recent.slice(-seqLen).map(t => t.tool).join(" → ");
+        const actionNames = history.slice(-seqLen).map(t => t.tool).join(" → ");
         return this.zoomOutMessage(`You've repeated the same ${seqLen}-step sequence (${actionNames}) ${count} times with no progress. You are stuck in a loop.`);
       }
     }

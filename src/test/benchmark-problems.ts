@@ -582,4 +582,75 @@ Use only Python built-in modules (csv module is fine). Write a README.md explain
       },
     ],
   },
+  // ── AI / Search ────────────────────────────────────────────────────────────
+  {
+    name: "a-star-pathfinding",
+    description: `Write proposedSolution(grid, start, goal) implementing the A* search algorithm on a 2D grid. grid is a list of strings where each string is a row, '.' is passable, '#' is an obstacle. start and goal are (row, col) tuples. Use Manhattan distance as the heuristic. Diagonal moves are NOT allowed (4-directional only: up, down, left, right). Each move costs 1. Return the shortest path as a list of (row, col) tuples from start to goal (inclusive), or None if no path exists. If multiple shortest paths exist, any is acceptable.
+
+Example 1: proposedSolution(["....", ".##.", "....", "...."], (0, 0), (3, 3)) → [(0,0), (0,1), (0,2), (0,3), (1,3), (2,3), (3,3)] or equivalent shortest path (length 7)
+Example 2: proposedSolution(["....", "####", "....", "...."], (0, 0), (2, 0)) → None (wall completely blocks path)
+Example 3: proposedSolution([".#.", "...", ".#."], (0, 0), (2, 2)) → [(0,0), (1,0), (1,1), (1,2), (2,2)]`,
+    language: "python",
+    complexity: "hard",
+  },
+  // ── Compression ────────────────────────────────────────────────────────────
+  {
+    name: "huffman-coding",
+    description: `Write proposedSolution(text) implementing Huffman coding to build a frequency-based binary tree and generate prefix codes. text is a string of ASCII characters. Return a dict with: "tree" (the Huffman tree as nested lists: [left, right] for internal nodes, or a string character for leaf nodes), "codes" (dict mapping each character to its binary code string, e.g. {"a":"0", "b":"10", "c":"11"}), "encoded_length" (integer, total bits when encoding the text = sum of each char's frequency times its code length).
+
+Algorithm: 1) Count character frequencies 2) Build a min-heap where each node is (frequency, id, tree) 3) Repeatedly extract the two smallest, combine into a new node [left, right] with combined frequency, push back 4) The single remaining node is the root. Assign '0' to left branch, '1' to right branch by DFS traversal.
+
+Example 1: proposedSolution("aab") → tree: [["b", "a"]] (b and a are siblings, a has code "1", b has code "0"), codes: {"a":"1","b":"0"}, encoded_length: 3
+Example 2: proposedSolution("aaaabbbcc") → codes: {"a":"0","b":"10","c":"11"}, encoded_length: 4*1 + 3*2 + 2*2 = 14
+Example 3: proposedSolution("x") → tree: "x", codes: {"x":"0"}, encoded_length: 1
+Example 4: proposedSolution("") → tree: None, codes: {}, encoded_length: 0`,
+    language: "python",
+    complexity: "hard",
+  },
+  // ── Monte Carlo / Numerical methods ─────────────────────────────────────────
+  {
+    name: "monte-carlo-pi",
+    description: `Write proposedSolution(n) that estimates pi using Monte Carlo sampling. Generate n random (x, y) points uniformly in the square [-1, 1] x [-1, 1]. Count how many fall inside the unit circle (x² + y² <= 1). The ratio of points inside to total points approximates π/4. Return the estimate of pi as a float. Use Python's random module. Seed the random number generator with 42 at the start to make results reproducible.
+
+Example 1: proposedSolution(10000) → ~3.14 (varies but should be close with seed 42)
+Example 2: proposedSolution(100000) → ~3.141 (converges with more samples)
+Example 3: proposedSolution(1) → 4.0 or 0.0 (a single point either lands inside or outside)
+Example 4: proposedSolution(0) → 0.0`,
+    language: "python",
+    complexity: "medium",
+  },
+  // ── String encoding ───────────────────────────────────────────────────────
+  {
+    name: "run-length-encoding",
+    description: `Write proposedSolution(text, mode) implementing run-length encoding (RLE) for lossless string compression. mode is "encode" (compress) or "decode" (decompress). For encode: replace each run of identical characters with the character followed by the count. Only encode runs of 2 or more. For decode: expand encoded strings back to the original.
+
+Example 1: proposedSolution("AAABBBCCD", "encode") → "A3B3C2D1" or "A3B3C2D" (single char counts optional)
+Example 2: proposedSolution("A3B3C2D1", "decode") → "AAABBBCCD"
+Example 3: proposedSolution("HELLO WWWORLD", "encode") → "H1E1L2O1 1W3O1R1L1D1" or similar (handle spaces)
+Example 4: proposedSolution("", "encode") → ""
+Example 5: proposedSolution("", "decode") → ""
+Example 6: proposedSolution("A10", "decode") → "AAAAAAAAAA" (handle multi-digit counts)
+Example 7: proposedSolution("A", "encode") → "A1" or "A"`,
+    language: "python",
+    complexity: "simple",
+  },
+  // ── Trie data structure ────────────────────────────────────────────────────
+  {
+    name: "trie-autocomplete",
+    description: `Write proposedSolution(operations) implementing a Trie (prefix tree) with insert, search, startsWith, and autocomplete operations. operations is a list of tuples: ("insert", word), ("search", word), ("startsWith", prefix), ("autocomplete", prefix). All words are lowercase a-z strings.
+
+- "insert": insert word into the trie. Return None.
+- "search": return True if word exists in the trie (was inserted exactly), False otherwise.
+- "startsWith": return True if any word in the trie starts with the given prefix, False otherwise.
+- "autocomplete": return a sorted list of all words in the trie that have the given prefix, up to a maximum of 5 results. Return empty list if no matches.
+
+Return a list of results (one per operation).
+
+Example 1: proposedSolution([("insert","apple"),("search","apple"),("search","app"),("startsWith","app"),("insert","app"),("search","app")]) → [None, True, False, True, None, True]
+Example 2: proposedSolution([("insert","bat"),("insert","ball"),("insert","bark"),("autocomplete","ba")]) → [None, None, None, ["ball","bark"]] (max 5, sorted)
+Example 3: proposedSolution([("insert","a"),("insert","aa"),("insert","aaa"),("autocomplete","a")]) → [None, None, None, ["a","aa","aaa"]]
+Example 4: proposedSolution([("search",""),("startsWith",""),("autocomplete","never")]) → [False, False, []]`,
+    language: "python",
+    complexity: "hard",
+  },
 ];

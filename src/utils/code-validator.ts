@@ -283,10 +283,10 @@ function formatPythonError(src: string, rawError: string): string {
 	const offendingLine = lineNum != null ? (lines[lineNum - 1] ?? null) : null;
 
 	let hint = "";
-	if (rawError.includes("IndentationError") || rawError.includes("unexpected indent")) {
+	if (rawError.includes("expected an indented block")) {
+		hint = "HINT: An if/for/while/def/else block must have at least one statement in its body. Use 'pass' if the body is empty. Check that the body is indented one level deeper than the block header.";
+	} else if (rawError.includes("IndentationError") || rawError.includes("unexpected indent")) {
 		hint = "HINT: Use consistent 4-space indentation. Do NOT mix tabs and spaces. Each nested block adds exactly 4 spaces.";
-	} else if (rawError.includes("expected an indented block")) {
-		hint = "HINT: An if/for/while/def/else block must have at least one statement in its body. Use 'pass' if the body is empty.";
 	} else if (rawError.includes("NameError") || rawError.includes("UnboundLocalError")) {
 		hint = "HINT: If you modify a variable from an outer scope inside a nested function, add 'nonlocal varname' at the top of the inner function. OR use a mutable container: count=[0] and count[0]+=1.";
 	} else if (rawError.includes("SyntaxError")) {

@@ -12,6 +12,7 @@ import { RESTORE_INF_JS, pythonRunnerSource } from "./utils/general";
 import { logEvent } from "./utils/prompt-logger";
 import { loadConfig } from "./cli";
 import { detectOrGenerateDomain } from "./domains/auto-detect";
+import { getDomainSpec } from "./executors/domains/registry";
 import { runBaseline } from "./agents/baseline";
 import { runRepair } from "./agents/repair";
 import { runTaskAgent } from "./llm/task-agent";
@@ -305,15 +306,32 @@ async function main() {
 
   // ── Step 1: Domain detection + oracle generation ──────────────────────────
   console.log("── Domain detection + oracle generation ──");
-  const detected = await detectOrGenerateDomain(problem);
-  totalCalls++;
-  console.log(`   Domain: ${detected.domain} (${detected.wasGenerated ? "generated" : "matched"})`);
+  // When the caller explicitly sets a domain (not "auto"), use it directly.
+  // Saves 1 LLM call and avoids misclassification for known domain names.
+  const explicitDomain = cfg.domain && cfg.domain !== "auto" ? cfg.domain : null;
+  const explicitSpec = explicitDomain ? getDomainSpec(explicitDomain) : null;
+  let detected: Awaited<ReturnType<typeof detectOrGenerateDomain>>;
+  if (explicitSpec && explicitDomain) {
+    console.log(`   Domain: ${explicitDomain} (explicit — skipping auto-detect)`);
+    detected = { domain: explicitDomain!, spec: explicitSpec, wasGenerated: false };
+  } else {
+    detected = await detectOrGenerateDomain(problem);
+    totalCalls++;
+    console.log(`   Domain: ${detected.domain} (${detected.wasGenerated ? "generated" : "matched"})`);
+  }
   if (detected.domainType) console.log(`   Type: ${detected.domainType}`);
 
   const spec = detected.spec;
   const domain = detected.domain;
-  const oracleSource = spec.testSource ?? "";
+  const oracleSource = spec?.testSource ?? "";
   outcome.domain = domain;
+
+  if (!spec) {
+    console.log(`\n✗ FAILED — domain generation returned no spec`);
+    logEvent("✗ FAILED", "no-domain-spec");
+    done();
+    return;
+  }
 
   try {
 

@@ -85,7 +85,15 @@ function getGitCommit(): string | undefined {
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
-/** Record a benchmark run and compare against the previous run. */
+/** Minimum number of problems required to record an efficiency snapshot.
+ *  Single-problem dev.sh runs produce noisy averages (1 problem at 6-8 calls
+ *  looks like a massive regression vs a 40-problem benchmark at 2 calls avg).
+ *  3-problem minimum ensures trends reflect meaningful benchmark runs. */
+const MIN_PROBLEMS_FOR_RECORDING = 3;
+
+/** Record a benchmark run and compare against the previous run.
+ *  Runs with fewer than MIN_PROBLEMS_FOR_RECORDING problems are excluded
+ *  from the efficiency history to prevent single-problem noise. */
 export function recordEfficiency(problems: ProblemEfficiency[]): EfficiencyDiff {
   const state = store.load();
   const passed = problems.filter(p => p.passed).length;
@@ -107,6 +115,12 @@ export function recordEfficiency(problems: ProblemEfficiency[]): EfficiencyDiff 
     avgPipelineCost: problems.length > 0 ? totalCost / problems.length : 0,
     passRate: problems.length > 0 ? passed / problems.length : 0,
   };
+
+  // Exclude single-problem or tiny runs from efficiency history —
+  // they produce meaningless averages that skew the trend line.
+  if (problems.length < MIN_PROBLEMS_FOR_RECORDING) {
+    return { ...computeDiff(null, snapshot), isFirstRun: true, newProblems: snapshot.problems.map(p => p.name) };
+  }
 
   const diff = computeDiff(state.previous, snapshot);
 

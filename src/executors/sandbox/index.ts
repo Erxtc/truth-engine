@@ -6,6 +6,7 @@ import { PersistentShell } from "./persistent-shell";
 import {
   ContainerShell,
   buildBwrapArgs,
+  bwrapFunctional,
   type ContainerConfig,
   DEFAULT_CONTAINER_CONFIG,
 } from "./container";
@@ -59,7 +60,12 @@ export class Sandbox {
 
     // Container isolation (bubblewrap)
     if (options.container !== null && options.container !== undefined) {
-      this._containerCfg = { ...DEFAULT_CONTAINER_CONFIG, ...options.container };
+      if (bwrapFunctional()) {
+        this._containerCfg = { ...DEFAULT_CONTAINER_CONFIG, ...options.container };
+      } else {
+        console.log("  [sandbox] bwrap not functional — disabling container isolation");
+        this._containerCfg = null;
+      }
     }
 
     if (options.persistent) {

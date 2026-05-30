@@ -113,7 +113,7 @@ export async function detectOrGenerateDomain(problem: string): Promise<AutoDetec
 			},
 		};
 		registerDomain(cachedSpec);
-		return { domain: cached.domain_name, spec: cachedSpec, wasGenerated: true };
+		return { domain: cached.domain_name, spec: cachedSpec, wasGenerated: true, domainType: cached.domain_type };
 	}
 
 	// ── Keyword pre-check (deterministic, free) ─────────────────────────
@@ -326,7 +326,7 @@ export async function detectOrGenerateDomain(problem: string): Promise<AutoDetec
 	for (const { type, keywords } of codeDomains) {
 		if (keywords.some(kw => probLower.includes(kw))) {
 			console.log(`[auto-detect] Keyword match → ${type} domain (custom oracle)`);
-			const spec = await generateCustomDomain(problem);
+			const spec = await generateCustomDomain(problem, type);
 			if (spec) {
 				return { domain: spec.name, spec, wasGenerated: true, domainType: type };
 			}

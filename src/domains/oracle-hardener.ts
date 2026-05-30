@@ -152,6 +152,10 @@ export function hardenOracle(oracleJs: string): { ok: boolean; error?: string } 
 		{ name: "return-truncated-list", source: "import copy\ndef proposedSolution(*args):\n    result = args[0] if args else [1]\n    if isinstance(result, list) and len(result) > 1:\n        return result[:1]\n    return [0]\n" },
 		// Returns a constant that could accidentally match one test case — catches single-test oracles
 		{ name: "return-constant-42", source: "def proposedSolution(*args):\n    return 42\n" },
+		// Returns a structurally-similar but wrong dict — catches oracles that only check key presence not values
+		{ name: "return-shallow-dict", source: "def proposedSolution(*args):\n    return {\"a\": 999, \"b\": 999, \"nested\": {\"key\": [9, 9, 9]}}\n" },
+		// Returns the first argument as raw string (doesn't parse it) — catches oracles that don't verify transformation
+		{ name: "return-raw-input", source: "def proposedSolution(*args):\n    return args[0] if args else ''\n" },
 	];
 
 	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "truth-harden-"));

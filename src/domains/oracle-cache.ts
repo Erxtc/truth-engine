@@ -16,6 +16,8 @@ export interface CachedOracle {
   required_confidence: number;
   solution_format: string;
   oracle_js: string;
+  /** Domain type for workflow preset lookup (e.g. "cryptography", "biology", "chemistry") */
+  domain_type?: string;
   cachedAt: string;
 }
 

@@ -16,7 +16,7 @@
  * Falls back gracefully — if bwrap is missing, execs run without isolation.
  */
 
-import { spawn } from "child_process";
+import { spawn, spawnSync } from "child_process";
 import { existsSync } from "fs";
 import { tmpdir } from "os";
 import { randomNonce } from "./types";
@@ -57,6 +57,40 @@ function getBwrapPath(): string | null {
   }
   _bwrapPath = null;
   return null;
+}
+
+// ── Bwrap functional test ────────────────────────────────────────────────────────
+
+let _bwrapFunctional: boolean | undefined = undefined;
+
+/**
+ * Test whether bwrap actually works on this system.
+ * Having the binary installed doesn't guarantee it works —
+ * user namespaces may be disabled or /etc/subuid may be missing.
+ *
+ * Result is cached after the first call.
+ */
+export function bwrapFunctional(): boolean {
+  if (_bwrapFunctional !== undefined) return _bwrapFunctional;
+  const bwrapPath = getBwrapPath();
+  if (!bwrapPath) {
+    _bwrapFunctional = false;
+    return false;
+  }
+  try {
+    const result = spawnSync(bwrapPath, ["--ro-bind", "/", "/", "true"], {
+      timeout: 5000,
+      stdio: "pipe",
+    });
+    _bwrapFunctional = result.status === 0;
+    if (!_bwrapFunctional) {
+      const errMsg = result.stderr?.toString().slice(0, 200) ?? "";
+      console.log(`  [container] bwrap functional test FAILED: ${errMsg}`);
+    }
+  } catch {
+    _bwrapFunctional = false;
+  }
+  return _bwrapFunctional!;
 }
 
 // ── Bwrap argument builder ────────────────────────────────────────────────────
@@ -136,6 +170,7 @@ export function buildBwrapArgs(
  */
 export class ContainerShell extends PersistentShell {
   private _config: Required<ContainerConfig>;
+  private _bwrapFailed = false;
 
   constructor(sandboxDir: string, config: Required<ContainerConfig>) {
     super(sandboxDir);
@@ -157,16 +192,21 @@ export class ContainerShell extends PersistentShell {
 
     this._nonce = randomNonce();
 
-    const bwrapPath = getBwrapPath();
+    const bwrapPath = (!this._bwrapFailed && bwrapFunctional()) ? getBwrapPath() : null;
     if (!bwrapPath) {
       // Fallback: spawn bash directly without isolation
+      if (this._bwrapFailed) {
+        console.log(`  [container-shell] bwrap unavailable — using plain bash`);
+      }
       this._proc = spawn("bash", ["--norc", "--noprofile"], {
         cwd: this.sandboxDir,
         env: { ...process.env, HOME: this.sandboxDir },
         stdio: ["pipe", "pipe", "pipe"],
       });
       this._proc.stderr?.on("data", () => { /* drained */ });
-      this._proc.on("error", () => { /* will be detected on next exec */ });
+      this._proc.on("error", (err) => {
+        console.error(`  [container-shell] bash process error: ${err.message}`);
+      });
       return;
     }
 
@@ -181,8 +221,27 @@ export class ContainerShell extends PersistentShell {
     });
 
     this._proc.stderr?.on("data", () => { /* drained — per-command merging via 2>&1 */ });
+
+    // Detect bwrap startup failure: if the process exits very quickly
+    // with a non-zero code, assume bwrap is broken and fall back to plain bash.
+    const bwrapStartTime = Date.now();
+    this._proc.once("close", (code) => {
+      const elapsed = Date.now() - bwrapStartTime;
+      if (code !== 0 && code !== null && elapsed < 2000 && !this._killed && !this._bwrapFailed) {
+        console.log(`  [container-shell] bwrap exited early (code ${code} in ${elapsed}ms) — falling back to plain bash`);
+        this._bwrapFailed = true;
+        // Reset proc so _execLocked will re-init on next attempt
+        try { this._proc?.kill("SIGKILL"); } catch { /* ignore */ }
+        this._proc = null as any;
+      }
+    });
+
     this._proc.on("error", (err) => {
       console.error(`  [container-shell] bwrap process error: ${err.message}`);
+      if (!this._bwrapFailed) {
+        this._bwrapFailed = true;
+        this._proc = null as any;
+      }
     });
   }
 }

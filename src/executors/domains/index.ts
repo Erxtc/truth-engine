@@ -1,7 +1,7 @@
 import type { PipelineResult, Proposal, WorkingContext, Artifact } from "../../core/types";
 import { runSortingPipeline } from "./sorting-pipeline";
 import { runProjectPipeline } from "./project-pipeline";
-import { verifyHtmlProject } from "./project-verify";
+import { verifyHtmlProject, VERIFY_CLI_SCRIPT } from "./project-verify";
 import { Sandbox, parseSandboxOutput } from "../sandbox/index";
 import { buildSortingHarness, buildCompressionHarness } from "../sandbox/harness-builder";
 import { transpileToJs, failPipeline } from "../../utils/general";
@@ -89,6 +89,48 @@ const projectRun: DomainRun = async (proposal, ctx) => {
 	if (proposal.executable.type === "project") return runProjectPipeline(proposal, ctx);
 	if (proposal.executable.type === "code") return verifyHtmlProject(proposal.executable.source);
 	return failPipeline("Project domain requires code or project executable");
+};
+
+// ── CLI Project (Python CLI tools) ────────────────────────────────────────────
+
+const cliProjectRun: DomainRun = async (proposal, ctx) => {
+	if (proposal.executable.type === "project") return runProjectPipeline(proposal, ctx);
+	if (proposal.executable.type === "code") {
+		const sb = new Sandbox("truth-cli-verify-");
+		try {
+			sb.write("main.py", proposal.executable.source);
+			sb.write("verify-cli-project.js", VERIFY_CLI_SCRIPT);
+			const r = await sb.exec("node verify-cli-project.js 2>&1", { timeoutMs: 30_000 });
+			try {
+				const parsed = JSON.parse(r.stdout.trim().split("\n").pop() || r.stdout.trim());
+				return {
+					overallPassed: !!parsed.passed,
+					stages: [{
+						stageName: "CliProjectVerify",
+						passed: !!parsed.passed,
+						reason: parsed.reason || (parsed.passed ? "ok" : "failed"),
+						runtimeMs: r.runtimeMs,
+						artifacts: parsed.details ? { details: parsed.details } : undefined,
+					}],
+					finalMetrics: {},
+				};
+			} catch {
+				return {
+					overallPassed: false,
+					stages: [{
+						stageName: "CliProjectVerify",
+						passed: false,
+						reason: `Verify script output not JSON: ${r.stdout.slice(0, 200)}`,
+						runtimeMs: r.runtimeMs,
+					}],
+					finalMetrics: {},
+				};
+			}
+		} finally {
+			sb.cleanup();
+		}
+	}
+	return failPipeline("CLI project requires code or project executable");
 };
 
 // ── Registry ─────────────────────────────────────────────────────────────────
@@ -227,7 +269,7 @@ registerDomain({
 		"All CLI commands/features documented in README.md must work",
 	],
 	requiredConfidence: 2,
-	run: projectRun,
+	run: cliProjectRun,
 });
 
 // ── Document-type domains (research, law, history, geography) ──────────────

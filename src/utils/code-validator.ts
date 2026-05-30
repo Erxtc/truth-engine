@@ -28,6 +28,10 @@ export function validateAndFixPython(source: string): ValidationResult {
 	let current = source;
 	let autoFixed = false;
 
+	// Pass 0: fix literal control characters in strings (common LLM mistake)
+	const pass0 = fixControlCharsInStrings(current);
+	if (pass0 !== current) { current = pass0; autoFixed = true; }
+
 	// Pass 1: cheap text-level fixes
 	const pass1 = textFix(current);
 	if (pass1 !== current) { current = pass1; autoFixed = true; }
@@ -138,6 +142,94 @@ function compileC(source: string): { ok: boolean; error?: string } {
 function compileJs(source: string): { ok: boolean; error?: string } {
   return compileWith(source, "jscheck", ".js",
     (t) => `node --check ${JSON.stringify(t)}`);
+}
+
+// ── Control character fixer ──────────────────────────────────────────────────
+
+/**
+ * Fix literal control characters inside Python single/double-quoted strings.
+ * LLMs frequently generate strings like ' \\t\\n\\r' where the backslash sequences
+ * are written as actual control characters, causing Python SyntaxError because
+ * the newline terminates the string literal mid-line.
+ *
+ * This is a deterministic, zero-cost fix. It uses a stateful scanner to track
+ * quote state across lines, replacing literal control chars with Python escape
+ * sequences when inside a quoted string.
+ */
+function fixControlCharsInStrings(src: string): string {
+	const hasControl = /[\t\n\r\f\v]/.test(src);
+	if (!hasControl) return src;
+
+	// Map of control characters to their Python escape sequences
+	const escapeMap: Record<string, string> = {
+		"\t": "\\t",
+		"\n": "\\n",
+		"\r": "\\r",
+		"\f": "\\f",
+		"\v": "\\v",
+	};
+
+	// Stateful scanner: track whether we're inside a quoted string
+	let inSingleQuote = false;
+	let inDoubleQuote = false;
+	const result: string[] = [];
+	let currentLine = "";
+
+	for (let i = 0; i < src.length; i++) {
+		const ch = src[i]!;
+
+		if (!inSingleQuote && !inDoubleQuote) {
+			// Outside strings: handle normally
+			if (ch === "'") {
+				inSingleQuote = true;
+				currentLine += ch;
+			} else if (ch === '"') {
+				inDoubleQuote = true;
+				currentLine += ch;
+			} else if (ch === "\n") {
+				result.push(currentLine);
+				currentLine = "";
+			} else {
+				currentLine += ch;
+			}
+		} else if (inSingleQuote) {
+			if (ch === "'") {
+				inSingleQuote = false;
+				currentLine += ch;
+			} else if (ch === "\\") {
+				// Already-escaped character: keep as-is (backslash + next char)
+				currentLine += ch;
+				if (i + 1 < src.length) {
+					i++;
+					currentLine += src[i]!;
+				}
+			} else if (escapeMap[ch]) {
+				// Literal control character inside string: replace with escape sequence
+				currentLine += escapeMap[ch]!;
+			} else {
+				currentLine += ch;
+			}
+		} else if (inDoubleQuote) {
+			if (ch === '"') {
+				inDoubleQuote = false;
+				currentLine += ch;
+			} else if (ch === "\\") {
+				currentLine += ch;
+				if (i + 1 < src.length) {
+					i++;
+					currentLine += src[i]!;
+				}
+			} else if (escapeMap[ch]) {
+				currentLine += escapeMap[ch]!;
+			} else {
+				currentLine += ch;
+			}
+		}
+	}
+	// Flush any remaining content
+	if (currentLine) result.push(currentLine);
+
+	return result.join("\n");
 }
 
 // ── Text-level fixes ─────────────────────────────────────────────────────────

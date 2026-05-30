@@ -217,7 +217,7 @@ function injectProblemExamples(problem: string, oracleJs: string): string {
 
 // ── Custom domain generation ──────────────────────────────────────────────
 
-export async function generateCustomDomain(problem: string): Promise<DomainSpec | null> {
+export async function generateCustomDomain(problem: string, domainType?: string): Promise<DomainSpec | null> {
 	const examples = buildOracleExamples();
 	const prompt = `
 You are designing a verification system for an automated problem-solving engine.
@@ -375,6 +375,7 @@ FAILING TO ADD THESE CHECKS MEANS YOUR ORACLE WILL PASS BROKEN CODE.`.trimStart(
 							required_confidence: r.required_confidence ?? 2,
 							solution_format: spec.solutionFormat ?? "Function that passes all oracle test cases",
 							oracle_js: repaired,
+							domain_type: domainType,
 							cachedAt: new Date().toISOString(),
 						});
 						return spec;
@@ -411,6 +412,7 @@ FAILING TO ADD THESE CHECKS MEANS YOUR ORACLE WILL PASS BROKEN CODE.`.trimStart(
 				required_confidence: r.required_confidence,
 				solution_format: r.solution_format,
 				oracle_js: oracleForHardening,
+				domain_type: domainType,
 				cachedAt: new Date().toISOString(),
 			});
 			return spec;
@@ -451,6 +453,7 @@ FAILING TO ADD THESE CHECKS MEANS YOUR ORACLE WILL PASS BROKEN CODE.`.trimStart(
 					required_confidence: 2,
 					solution_format: spec.solutionFormat ?? "Function that passes all oracle test cases",
 					oracle_js: repaired,
+					domain_type: domainType,
 					cachedAt: new Date().toISOString(),
 				});
 				return spec;

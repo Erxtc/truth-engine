@@ -13,7 +13,9 @@
  *   bun run src/test/benchmark.ts --cross-prompt         # per-problem comparison across prompt versions
  *   bun run src/test/benchmark.ts --cross-prompt fibonacci  # cross-prompt for specific problem
  *   bun run src/test/benchmark.ts --force                # re-run even trusted problems
+ *   bun run src/test/benchmark.ts --fresh                 # bypass LLM response cache (passes nonce)
  *   bun run src/test/benchmark.ts --no-prompt-cache       # disable trusted-problem skipping
+ *   bun run src/test/benchmark.ts --consistency-report     # show persisted consistency verdicts
  */
 
 import { PROBLEMS, type TestProblem } from "./benchmark-problems";
@@ -25,11 +27,21 @@ import { readFileSync } from "fs";
 import { resolve, dirname } from "path";
 import {
   recordPromptRun,
+  recordConsistencyVerdict,
+  getConsistencyVerdicts,
+  getConsistencyReport,
+  formatConsistencyReport,
   generatePromptReport,
   generateCrossPromptComparison,
   formatCrossPromptReport,
+  generateWhatIfAnalysis,
+  formatWhatIfReport,
+  getImprovementTrends,
+  formatImprovementTrends,
   getTrustedProblems,
+  getTrustedThreshold,
   getCurrentPromptHash,
+  getPromptUsageCount,
 } from "../analysis/prompt-version-tracker";
 
 const ROOT = resolve(dirname(import.meta.filename!), "..", "..");
@@ -79,7 +91,7 @@ function totalCost(logPath: string): number {
   }
 }
 
-function runPipeline(problem: TestProblem): { passed: boolean; calls: number; tokens: number; cost: number; durationMs: number; solvedBy: string; systemPromptHash: string } {
+function runPipeline(problem: TestProblem, nonce?: string): { passed: boolean; calls: number; tokens: number; cost: number; durationMs: number; solvedBy: string; systemPromptHash: string } {
   const domain = problem.domain || "auto";
   const projectTestsJson = problem.projectTests ? JSON.stringify(problem.projectTests) : "";
   const langEnv = problem.language ? `PROBLEM_LANGUAGE=${problem.language}` : "";
@@ -90,9 +102,12 @@ function runPipeline(problem: TestProblem): { passed: boolean; calls: number; to
     // but the shell command string needs escaping for $, `, \, and ".
     const shellEscape = (s: string) => s.replace(/[\\"$`!]/g, '\\$&').replace(/\n/g, ' ');
     const descEscaped = shellEscape(problem.description);
+    // Fresh mode: pass a nonce to bypass LLM response cache (forces fresh API calls)
+    const nonceEnv = nonce ? `LLM_NONCE=${nonce}` : "";
+    const nonceEnvVar = nonce ? { LLM_NONCE: nonce } : {};
     const output = execSync(
-      `${langEnv} PROBLEM_COMPLEXITY=${problem.complexity} DOMAIN=${domain} PROBLEM_DESC="${descEscaped}" NO_UI=1 bun run ${ROOT}/src/main.ts`,
-      { cwd: ROOT, timeout: 300_000, encoding: "utf-8", env: { ...process.env, DOMAIN: domain, PROBLEM_DESC: problem.description, PROBLEM_COMPLEXITY: problem.complexity, NO_UI: "1", PROJECT_TESTS: projectTestsJson, PROBLEM_LANGUAGE: problem.language || "" } }
+      `${nonceEnv} ${langEnv} PROBLEM_COMPLEXITY=${problem.complexity} DOMAIN=${domain} PROBLEM_DESC="${descEscaped}" NO_UI=1 bun run ${ROOT}/src/main.ts`,
+      { cwd: ROOT, timeout: 300_000, encoding: "utf-8", env: { ...process.env, DOMAIN: domain, PROBLEM_DESC: problem.description, PROBLEM_COMPLEXITY: problem.complexity, NO_UI: "1", PROJECT_TESTS: projectTestsJson, PROBLEM_LANGUAGE: problem.language || "", ...nonceEnvVar } }
     );
     const duration = Date.now() - t0;
 
@@ -137,6 +152,10 @@ let isConsistency = false;
 let isCrossPrompt = false;
 let skipTrusted = true; // default: skip problems with >2 consistent passes
 let showPromptReport = false;
+let isFresh = false;   // bypass LLM response cache
+let showConsistencyReport = false;
+let showWhatIf = false;
+let showTrends = false;
 
 function getProblems(args: string[]): { problems: TestProblem[]; label: string } {
   let mode: "all" | "failing" | "tier" | "named" = "named";
@@ -149,8 +168,12 @@ function getProblems(args: string[]): { problems: TestProblem[]; label: string }
     else if (arg === "--consistency") { isConsistency = true; }
     else if (arg === "--cross-prompt") { isCrossPrompt = true; }
     else if (arg === "--force") { skipTrusted = false; }
+    else if (arg === "--fresh") { isFresh = true; }
     else if (arg === "--no-prompt-cache") { skipTrusted = false; }
     else if (arg === "--prompt-report") { showPromptReport = true; }
+    else if (arg === "--consistency-report") { showConsistencyReport = true; }
+    else if (arg === "--what-if") { showWhatIf = true; }
+    else if (arg === "--trends") { showTrends = true; }
     else if (arg.startsWith("--tier=")) { mode = "tier"; tierFilter = arg.slice(7); }
     else if (arg.startsWith("--")) continue;
     else names.push(arg);
@@ -274,6 +297,46 @@ async function runConsistencyCheck(problems: TestProblem[], runCount: number): P
   }
 
   console.log(`\n  Stable: ${stablePass.length + stableFail.length}/${results.length}  Flaky: ${flaky.length}/${results.length}`);
+
+  // ── Persist consistency verdicts ──────────────────────────────────────────
+  console.log(`\n  Persisting consistency verdicts...`);
+  for (const r of results) {
+    const passes = r.runs.filter(run => run.passed).length;
+    const failures = r.runs.filter(run => !run.passed).length;
+    try {
+      recordConsistencyVerdict(r.name, r.verdict, r.runs.length, passes, failures);
+    } catch (err) {
+      console.log(`    ⚠ Failed to persist ${r.name}: ${(err as Error).message}`);
+    }
+  }
+  console.log(`  ✓ Saved ${results.length} verdict(s) to .prompt-versions.json`);
+
+  // ── Also persist individual runs for prompt-version tracking ──────────────
+  const currentHash = getCurrentPromptHash();
+  if (currentHash) {
+    for (const r of results) {
+      const problem = problems.find(p => p.name === r.name);
+      if (problem) {
+        for (const run of r.runs) {
+          try {
+            recordPromptRun({
+              timestamp: new Date().toISOString(),
+              problem: r.name,
+              systemPromptHash: currentHash,
+              systemPromptPreview: `[consistency-check] ${r.name}`,
+              userPrompt: problem.description,
+              complexity: r.complexity,
+              passed: run.passed,
+              calls: run.calls,
+              tokens: run.tokens,
+              solvedBy: "consistency-check",
+            });
+          } catch { /* best-effort */ }
+        }
+      }
+    }
+  }
+
   console.log(`  Total time: ${formatMs(elapsed)}`);
   console.log(`═══════════════════════════════════════════════════════════════\n`);
 }

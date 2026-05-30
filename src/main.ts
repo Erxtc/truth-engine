@@ -634,7 +634,7 @@ async function main() {
         complexity,
         passed: outcome.solved,
         calls: totalCalls,
-        tokens: 0, // tokens are computed from log in benchmark layer
+        tokens: countTokensFromLog(),
         solvedBy: outcome.solvedBy,
       });
     }

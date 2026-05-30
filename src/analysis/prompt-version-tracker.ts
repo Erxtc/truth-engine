@@ -66,6 +66,19 @@ export interface PromptVersionSummary {
   passRate: number;
 }
 
+export interface ConsistencyVerdict {
+  /** "stable-pass" | "stable-fail" | "flaky" */
+  verdict: "stable-pass" | "stable-fail" | "flaky";
+  /** When this consistency check was performed */
+  lastChecked: string;
+  /** How many runs were performed */
+  runsChecked: number;
+  /** Pass count in those runs */
+  passes: number;
+  /** Fail count in those runs */
+  failures: number;
+}
+
 export interface PromptVersionState {
   /** All runs, keyed by hash */
   runs: Record<string, PromptRun[]>;
@@ -73,6 +86,10 @@ export interface PromptVersionState {
   summaries: Record<string, PromptVersionSummary>;
   /** Current active prompt hash (from the latest buildSystemPrompt) */
   currentHash: string | null;
+  /** Per-problem consistency verdicts (from --consistency mode) — persists across sessions */
+  consistencyVerdicts: Record<string, ConsistencyVerdict>;
+  /** Configurable trusted-problem threshold — how many consistent passes needed */
+  trustedThreshold: number;
   /** When the state was last updated */
   updatedAt: string;
 }
@@ -84,6 +101,8 @@ function emptyState(): PromptVersionState {
     runs: {},
     summaries: {},
     currentHash: null,
+    consistencyVerdicts: {},
+    trustedThreshold: 2,
     updatedAt: new Date().toISOString(),
   };
 }
@@ -179,23 +198,34 @@ export function getCurrentPromptHash(): string | null {
 }
 
 /** Check if a (promptHash, problem) combo has been seen more than `threshold` times.
- *  Used for auto-cache decisions. */
+ *  Used for auto-cache decisions. Iterates runs to handle userPrompt mismatches. */
 export function shouldAutoCache(
   systemPromptHash: string,
   userPrompt: string,
   threshold: number = 2
 ): boolean {
+  // Try combined-hash lookup first (fast path — works when userPrompt is consistent)
   const hash = hashPrompt(systemPromptHash, userPrompt);
   const state = store.load();
-  const runs = state.runs[hash];
-  return runs ? runs.length > threshold : false;
+  const directMatch = state.runs[hash];
+  if (directMatch && directMatch.length > threshold) return true;
+
+  // Fallback: iterate all runs (handles userPrompt format differences)
+  const problemRuns = getRunsBySystemHash(systemPromptHash);
+  return problemRuns.length > threshold;
 }
 
-/** Get usage count for a specific (promptHash, userPrompt) combo. */
-export function getPromptUsageCount(systemPromptHash: string, userPrompt: string): number {
-  const hash = hashPrompt(systemPromptHash, userPrompt);
-  const state = store.load();
-  return state.runs[hash]?.length ?? 0;
+/** Get usage count for runs with the given system prompt hash.
+ *  Uses iteration to be robust against userPrompt format variations. */
+export function getPromptUsageCount(systemPromptHash: string, userPrompt?: string): number {
+  // Try fast hash-based lookup first
+  if (userPrompt) {
+    const hash = hashPrompt(systemPromptHash, userPrompt);
+    const direct = store.load().runs[hash];
+    if (direct) return direct.length;
+  }
+  // Fallback: count all runs with this system prompt hash
+  return getRunsBySystemHash(systemPromptHash).length;
 }
 
 /** Get all distinct system prompt hashes (versions) that have been used. */
@@ -616,53 +646,462 @@ export function formatConsistencyReport(consistency: ProblemConsistency[]): stri
   return lines.join("\n");
 }
 
+// ── Internal helpers ─────────────────────────────────────────────────────────────
+
+/** Iterate all runs and collect those matching a given system prompt hash. */
+function getRunsBySystemHash(phash: string): PromptRun[] {
+  const state = store.load();
+  const matches: PromptRun[] = [];
+  for (const runs of Object.values(state.runs)) {
+    for (const run of runs) {
+      if (run.systemPromptHash === phash) {
+        matches.push(run);
+      }
+    }
+  }
+  return matches;
+}
+
+/** Iterate all runs and collect those matching (systemPromptHash, problem). */
+function getRunsBySystemAndProblem(phash: string, problem: string): PromptRun[] {
+  const state = store.load();
+  const matches: PromptRun[] = [];
+  for (const runs of Object.values(state.runs)) {
+    for (const run of runs) {
+      if (run.systemPromptHash === phash && run.problem === problem) {
+        matches.push(run);
+      }
+    }
+  }
+  return matches;
+}
+
 // ── Trusted problems (smart cache defaults) ──────────────────────────────────────
 
-/** A problem is "trusted" when it has passed consistently ≥3 times with the
- *  current prompt hash. Trusted problems can be skipped in benchmark runs
- *  (--force overrides). This saves significant LLM cost on stable problems. */
+/** A problem is "trusted" when it has passed consistently ≥threshold times
+ *  with the current prompt hash. Trusted problems can be skipped in benchmark runs
+ *  (--force overrides). Threshold defaults to 2 (user-configured).
+ *  Also checks consistency verdicts: if a problem is known-flaky, it's never trusted
+ *  regardless of recent passes (flaky = passes sometimes, fails other times). */
 export function isTrusted(problemName: string): boolean {
   const state = store.load();
   const phash = state.currentHash;
   if (!phash) return false;
 
-  const runs = state.runs[phash];
-  if (!runs) return false;
+  // Never trust flaky problems — they might fail next time
+  const verdict = state.consistencyVerdicts[problemName];
+  if (verdict?.verdict === "flaky") return false;
 
-  const problemRuns = runs.filter(r => r.problem === problemName);
-  if (problemRuns.length < 3) return false;
+  const threshold = state.trustedThreshold ?? 2;
+  const problemRuns = getRunsBySystemAndProblem(phash, problemName);
+  if (problemRuns.length < threshold) return false;
 
   return problemRuns.every(r => r.passed);
 }
 
-/** Get all problem names that are currently trusted (consistently passing ≥3x
- *  with the current prompt hash). These can be safely skipped with --force.
- *  @param currentHashOverride — optional explicit hash; uses state.currentHash if omitted */
-export function getTrustedProblems(currentHashOverride?: string | null): string[] {
+/** Get all problem names that are currently trusted (consistently passing ≥threshold
+ *  with the current prompt hash). These can be safely skipped without --force.
+ *  @param currentHashOverride — optional explicit hash; uses state.currentHash if omitted
+ *  @param thresholdOverride — optional explicit threshold; uses state.trustedThreshold if omitted */
+export function getTrustedProblems(currentHashOverride?: string | null, thresholdOverride?: number): string[] {
   const state = store.load();
   const phash = currentHashOverride ?? state.currentHash;
   if (!phash) return [];
 
-  const runs = state.runs[phash];
-  if (!runs) return [];
+  const threshold = thresholdOverride ?? state.trustedThreshold ?? 2;
+  const allRuns = getRunsBySystemHash(phash);
 
-  const byProblem = new Map<string, boolean>();
-  for (const run of runs) {
-    if (!byProblem.has(run.problem)) {
-      byProblem.set(run.problem, true);
-    }
-    if (!run.passed) {
-      byProblem.set(run.problem, false);
+  const byProblem = new Map<string, { allPassed: boolean; count: number; lastRun: PromptRun }>();
+  for (const run of allRuns) {
+    const existing = byProblem.get(run.problem);
+    if (existing) {
+      existing.count++;
+      if (!run.passed) existing.allPassed = false;
+      if (run.timestamp > existing.lastRun.timestamp) existing.lastRun = run;
+    } else {
+      byProblem.set(run.problem, { allPassed: run.passed, count: 1, lastRun: run });
     }
   }
 
   return [...byProblem.entries()]
-    .filter(([, allPassed]) => allPassed)
-    .map(([name]) => name)
-    .filter(name => {
-      const problemRuns = (state.runs[phash] ?? []).filter(r => r.problem === name);
-      return problemRuns.length >= 3;
+    .filter(([, v]) => v.allPassed && v.count >= threshold)
+    .filter(([name]) => {
+      // Flaky problems are never trusted — even if recent runs all passed
+      const verdict = state.consistencyVerdicts[name];
+      return verdict?.verdict !== "flaky";
+    })
+    .map(([name]) => name);
+}
+
+/** Get last trusted run info for display in benchmark output (when skipping).
+ *  Returns the most recent passing run for this (phash, problem) combo, or null. */
+export function getLastTrustedRun(problemName: string, phash?: string | null): PromptRun | null {
+  const state = store.load();
+  const hash = phash ?? state.currentHash;
+  if (!hash) return null;
+
+  const problemRuns = getRunsBySystemAndProblem(hash, problemName);
+  const passing = problemRuns.filter(r => r.passed);
+  if (passing.length === 0) return null;
+
+  return passing.reduce((a, b) => a.timestamp > b.timestamp ? a : b);
+}
+
+// ── Consistency verdict persistence ──────────────────────────────────────────────
+
+/** Record a consistency verdict for a problem. Called after --consistency mode runs.
+ *  Persisted across sessions so flaky detection survives restarts. */
+export function recordConsistencyVerdict(
+  problem: string,
+  verdict: "stable-pass" | "stable-fail" | "flaky",
+  runsChecked: number,
+  passes: number,
+  failures: number,
+): void {
+  const state = store.load();
+  state.consistencyVerdicts[problem] = {
+    verdict,
+    lastChecked: new Date().toISOString(),
+    runsChecked,
+    passes,
+    failures,
+  };
+  state.updatedAt = new Date().toISOString();
+  store.markDirty();
+  store.save();
+}
+
+/** Get all persisted consistency verdicts. */
+export function getConsistencyVerdicts(): Record<string, ConsistencyVerdict> {
+  return { ...store.load().consistencyVerdicts };
+}
+
+/** Get consistency verdict for a single problem. */
+export function getConsistencyVerdict(problemName: string): ConsistencyVerdict | null {
+  const verdicts = store.load().consistencyVerdicts;
+  return verdicts[problemName] ?? null;
+}
+
+/** Get the current trusted-problem threshold. */
+export function getTrustedThreshold(): number {
+  return store.load().trustedThreshold ?? 2;
+}
+
+/** Set the trusted-problem threshold. Problems with ≥N consistent passes are trusted. */
+export function setTrustedThreshold(n: number): void {
+  const state = store.load();
+  state.trustedThreshold = Math.max(1, Math.min(n, 10));
+  state.updatedAt = new Date().toISOString();
+  store.markDirty();
+  store.save();
+}
+
+// ── Improvement trend tracking ────────────────────────────────────────────────────
+
+export interface ProblemTrend {
+  name: string;
+  /** Trend direction based on call counts across recent runs */
+  trend: "improving" | "regressing" | "stable" | "new";
+  /** Pass/fail trend */
+  passTrend: "always-pass" | "always-fail" | "improved-to-pass" | "regressed-to-fail" | "flaky";
+  /** Recent run data for this problem */
+  recentRuns: Array<{
+    timestamp: string;
+    passed: boolean;
+    calls: number;
+    tokens: number;
+    promptHash: string;
+  }>;
+}
+
+/** Compute per-problem improvement trends across recent runs.
+ *  Groups runs by problem name and compares recent performance to earlier. */
+export function getImprovementTrends(problemNames?: string[]): ProblemTrend[] {
+  const state = store.load();
+  const problemMap = new Map<string, Array<{
+    timestamp: string;
+    passed: boolean;
+    calls: number;
+    tokens: number;
+    promptHash: string;
+  }>>();
+
+  // Collect all runs for each problem
+  for (const [hash, runs] of Object.entries(state.runs)) {
+    for (const run of runs) {
+      if (problemNames && !problemNames.includes(run.problem)) continue;
+      const existing = problemMap.get(run.problem) || [];
+      existing.push({
+        timestamp: run.timestamp,
+        passed: run.passed,
+        calls: run.calls,
+        tokens: run.tokens,
+        promptHash: hash,
+      });
+      problemMap.set(run.problem, existing);
+    }
+  }
+
+  const trends: ProblemTrend[] = [];
+  for (const [name, runs] of problemMap) {
+    const sorted = runs.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+
+    // Split into recent half and older half
+    const mid = Math.floor(sorted.length / 2);
+    const older = sorted.slice(0, mid);
+    const recent = sorted.slice(mid);
+
+    const olderAvgCalls = older.length > 0
+      ? older.reduce((s, r) => s + r.calls, 0) / older.length
+      : 0;
+    const recentAvgCalls = recent.length > 0
+      ? recent.reduce((s, r) => s + r.calls, 0) / recent.length
+      : 0;
+
+    // Determine call-count trend
+    let trend: ProblemTrend["trend"];
+    if (sorted.length < 2) {
+      trend = "new";
+    } else if (recentAvgCalls < olderAvgCalls * 0.85) {
+      trend = "improving";
+    } else if (recentAvgCalls > olderAvgCalls * 1.15) {
+      trend = "regressing";
+    } else {
+      trend = "stable";
+    }
+
+    // Determine pass/fail trend
+    const olderPassRate = older.length > 0
+      ? older.filter(r => r.passed).length / older.length
+      : 0;
+    const recentPassRate = recent.length > 0
+      ? recent.filter(r => r.passed).length / recent.length
+      : 0;
+
+    let passTrend: ProblemTrend["passTrend"];
+    if (recentPassRate === 1 && olderPassRate === 1) passTrend = "always-pass";
+    else if (recentPassRate === 0 && olderPassRate === 0) passTrend = "always-fail";
+    else if (recentPassRate >= 0.8 && olderPassRate < 0.5) passTrend = "improved-to-pass";
+    else if (recentPassRate < 0.5 && olderPassRate >= 0.8) passTrend = "regressed-to-fail";
+    else if (recentPassRate > 0 && recentPassRate < 1) passTrend = "flaky";
+    else passTrend = "always-fail";
+
+    trends.push({
+      name,
+      trend,
+      passTrend,
+      recentRuns: sorted.slice(-5),
     });
+  }
+
+  // Sort: failing first (need attention), then flaky, then passing
+  const priority: Record<string, number> = {
+    "always-fail": 0, "regressed-to-fail": 1, "flaky": 2,
+    "new": 3, "improving": 4, "stable": 5, "always-pass": 6, "improved-to-pass": 7,
+  };
+  trends.sort((a, b) => (priority[a.passTrend] ?? 5) - (priority[b.passTrend] ?? 5));
+
+  return trends;
+}
+
+/** Format improvement trends as a human-readable string. */
+export function formatImprovementTrends(trends: ProblemTrend[]): string {
+  if (trends.length === 0) return "No improvement trend data available.";
+
+  const lines: string[] = [];
+  lines.push("═══════════════════════════════════════════════════════════════");
+  lines.push("  IMPROVEMENT TRENDS — per-problem trajectory across runs");
+  lines.push("═══════════════════════════════════════════════════════════════");
+
+  const byPassTrend = {
+    "always-fail": trends.filter(t => t.passTrend === "always-fail"),
+    "regressed-to-fail": trends.filter(t => t.passTrend === "regressed-to-fail"),
+    "flaky": trends.filter(t => t.passTrend === "flaky"),
+    "improved-to-pass": trends.filter(t => t.passTrend === "improved-to-pass"),
+    "always-pass": trends.filter(t => t.passTrend === "always-pass"),
+    "new": trends.filter(t => t.passTrend === "new"),
+  };
+
+  if (byPassTrend["always-fail"].length > 0) {
+    lines.push(`\n  ✗ ALWAYS FAIL (${byPassTrend["always-fail"].length} problems) — highest priority:`);
+    for (const t of byPassTrend["always-fail"]) {
+      const callTrend = t.trend === "improving" ? "↓" : t.trend === "regressing" ? "↑" : "→";
+      lines.push(`    ${t.name.padEnd(28)} ${callTrend} calls ${t.trend}`);
+    }
+  }
+
+  if (byPassTrend["regressed-to-fail"].length > 0) {
+    lines.push(`\n  ⚠ REGRESSED TO FAIL (${byPassTrend["regressed-to-fail"].length}) — was passing, now failing:`);
+    for (const t of byPassTrend["regressed-to-fail"]) {
+      lines.push(`    ${t.name.padEnd(28)} investigate what changed`);
+    }
+  }
+
+  if (byPassTrend["flaky"].length > 0) {
+    lines.push(`\n  ⚡ FLAKY (${byPassTrend["flaky"].length}) — non-deterministic:`);
+    for (const t of byPassTrend["flaky"]) {
+      lines.push(`    ${t.name.padEnd(28)} passes sometimes, fails other times — run --consistency`);
+    }
+  }
+
+  if (byPassTrend["improved-to-pass"].length > 0) {
+    lines.push(`\n  ✓ IMPROVED TO PASS (${byPassTrend["improved-to-pass"].length}) — was failing, now passing:`);
+    for (const t of byPassTrend["improved-to-pass"]) {
+      const callTrend = t.trend === "improving" ? "↓" : t.trend === "regressing" ? "↑" : "→";
+      lines.push(`    ${t.name.padEnd(28)} ${callTrend} calls ${t.trend}`);
+    }
+  }
+
+  if (byPassTrend["always-pass"].length > 0) {
+    lines.push(`\n  ✓ ALWAYS PASS (${byPassTrend["always-pass"].length}) — rock solid:`);
+    const improving = byPassTrend["always-pass"].filter(t => t.trend === "improving");
+    const stable = byPassTrend["always-pass"].filter(t => t.trend === "stable");
+    const regressing = byPassTrend["always-pass"].filter(t => t.trend === "regressing");
+    if (improving.length > 0) lines.push(`    ${improving.length} getting faster ↓`);
+    if (stable.length > 0) lines.push(`    ${stable.length} stable →`);
+    if (regressing.length > 0) lines.push(`    ${regressing.length} getting slower ↑ (investigate)`);
+  }
+
+  lines.push("\n═══════════════════════════════════════════════════════════════");
+  return lines.join("\n");
+}
+
+// ── "What if" cross-prompt analysis ───────────────────────────────────────────────
+
+export interface WhatIfResult {
+  problem: string;
+  /** Most recent result with the current prompt */
+  currentResult: { passed: boolean; calls: number; hash: string } | null;
+  /** Results under OTHER prompt versions (excluding current) */
+  otherVersions: Array<{
+    hash: string;
+    passed: boolean;
+    calls: number;
+    lastSeen: string;
+    preview: string;
+  }>;
+  /** Did at least one other prompt version pass? */
+  bestHistoricalPassed: boolean;
+  /** If current fails but historical passed, which prompt hash? */
+  regressionFrom: string | null;
+}
+
+/** Generate "what if" analysis: for each problem, show how it performed
+ *  under different prompt versions. This answers: "would a different prompt
+ *  have solved this problem?" — critical for evaluating prompt improvements. */
+export function generateWhatIfAnalysis(problemNames?: string[]): WhatIfResult[] {
+  const state = store.load();
+  const results: WhatIfResult[] = [];
+
+  const allProblems = new Set<string>();
+  for (const runs of Object.values(state.runs)) {
+    for (const run of runs) {
+      allProblems.add(run.problem);
+    }
+  }
+
+  const problems = problemNames
+    ? [...allProblems].filter(p => problemNames.some(n => p === n || p.includes(n)))
+    : [...allProblems].sort();
+
+  for (const problem of problems) {
+    const otherVersions: WhatIfResult["otherVersions"] = [];
+    let currentResult: WhatIfResult["currentResult"] = null;
+
+    for (const [hash, runs] of Object.entries(state.runs)) {
+      const problemRuns = runs.filter(r => r.problem === problem);
+      if (problemRuns.length === 0) continue;
+
+      const latest = problemRuns.reduce((a, b) =>
+        a.timestamp > b.timestamp ? a : b
+      );
+
+      const isCurrent = hash === state.currentHash;
+
+      if (isCurrent) {
+        currentResult = { passed: latest.passed, calls: latest.calls, hash };
+      } else {
+        otherVersions.push({
+          hash,
+          passed: latest.passed,
+          calls: latest.calls,
+          lastSeen: latest.timestamp,
+          preview: latest.systemPromptPreview?.slice(0, 60) ?? "",
+        });
+      }
+    }
+
+    const anyHistoricalPassed = otherVersions.some(v => v.passed);
+    let regressionFrom: string | null = null;
+
+    if (currentResult && !currentResult.passed && anyHistoricalPassed) {
+      regressionFrom = otherVersions.filter(v => v.passed)
+        .sort((a, b) => b.lastSeen.localeCompare(a.lastSeen))[0]?.hash ?? null;
+    }
+
+    if (currentResult || otherVersions.length > 0) {
+      results.push({
+        problem,
+        currentResult,
+        otherVersions: otherVersions.sort((a, b) => b.lastSeen.localeCompare(a.lastSeen)),
+        bestHistoricalPassed: anyHistoricalPassed,
+        regressionFrom,
+      });
+    }
+  }
+
+  return results;
+}
+
+/** Format "what if" analysis as human-readable string. */
+export function formatWhatIfReport(results: WhatIfResult[]): string {
+  if (results.length === 0) return "No \"what if\" data available (need historical prompt data).";
+
+  const lines: string[] = [];
+  lines.push("═══════════════════════════════════════════════════════════════");
+  lines.push("  WHAT-IF ANALYSIS — how would different prompts have done?");
+  lines.push("═══════════════════════════════════════════════════════════════");
+
+  const regressions = results.filter(r => r.regressionFrom !== null);
+  const newlyPassing = results.filter(r =>
+    r.currentResult?.passed && r.otherVersions.length > 0 && !r.otherVersions.some(v => v.passed)
+  );
+  const alwaysPass = results.filter(r =>
+    r.currentResult?.passed && r.otherVersions.length > 0 && r.otherVersions.every(v => v.passed)
+  );
+
+  lines.push(`\n  Total problems with history: ${results.length}`);
+
+  if (regressions.length > 0) {
+    lines.push(`\n  ⚠ PROMPT REGRESSIONS (${regressions.length}) — current prompt fails, previous succeeded:`);
+    for (const r of regressions) {
+      const passing = r.otherVersions.find(v => v.hash === r.regressionFrom);
+      const callsStr = passing ? ` (${passing.calls}c)` : "";
+      lines.push(`    ${r.problem.padEnd(28)} current: FAIL  |  ${r.regressionFrom!.slice(0, 8)}: PASS${callsStr} — revert prompt?`);
+    }
+  }
+
+  if (newlyPassing.length > 0) {
+    lines.push(`\n  ✓ PROMPT IMPROVEMENTS (${newlyPassing.length}) — current prompt succeeds where all previous failed:`);
+    for (const r of newlyPassing) {
+      lines.push(`    ${r.problem.padEnd(28)} current: PASS (${r.currentResult?.calls ?? 0}c) — prompt got better!`);
+    }
+  }
+
+  if (alwaysPass.length > 0) {
+    lines.push(`\n  ✓ ALWAYS PASS (${alwaysPass.length}) — passes with every prompt version:`);
+    for (const r of alwaysPass) {
+      lines.push(`    ${r.problem}`);
+    }
+  }
+
+  const singleVersion = results.filter(r => r.otherVersions.length === 0);
+  if (singleVersion.length > 0 && singleVersion.length < results.length) {
+    lines.push(`\n  ? SINGLE VERSION (${singleVersion.length}) — no historical data to compare`);
+  }
+
+  lines.push("\n═══════════════════════════════════════════════════════════════");
+  return lines.join("\n");
 }
 
 // ── Cache invalidation ───────────────────────────────────────────────────────────
@@ -673,6 +1112,7 @@ export function clearPromptCache(): void {
   // Reset all fields
   Object.keys(state.runs).forEach(k => delete state.runs[k]);
   Object.keys(state.summaries).forEach(k => delete state.summaries[k]);
+  Object.keys(state.consistencyVerdicts).forEach(k => delete state.consistencyVerdicts[k]);
   state.currentHash = null;
   state.updatedAt = new Date().toISOString();
   store.markDirty();

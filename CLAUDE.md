@@ -175,10 +175,14 @@ This section refers ONLY to pipeline agent components above. Scripts, config fil
 package.json entries, and prompts.json are INFRASTRUCTURE — never delete them.
 
 - `package.json` scripts — all of them (`develop`, `start`, `test`, `typecheck`, etc.)
+- `develop` — root-level trampoline script (auto-restores package.json entry)
 - `scripts/*.sh` — all shell scripts are intentional infrastructure
 - `scripts/*.ts` — stream-filter and other script utilities
 - `prompts.json` — prompt catalog for `bun develop`
 - `CLAUDE.md` — this file (you're reading it)
+
+These files self-heal: if `package.json` loses the `develop` entry, running
+`bash develop` or `bash scripts/develop.sh` restores it automatically.
 
 ---
 

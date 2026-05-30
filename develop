@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Root-level trampoline for bun develop.
+# If package.json loses the develop entry (agents delete it), this file
+# still works directly: `bash develop` or `./develop`
+# It self-heals package.json on every invocation, then delegates to the
+# full script at scripts/develop.sh
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+exec bash "$SCRIPT_DIR/scripts/develop.sh" "$@"

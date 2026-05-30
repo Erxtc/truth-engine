@@ -35,7 +35,7 @@ import { readFileSync, writeFileSync } from 'fs'
 const pkg = JSON.parse(readFileSync('$pkg', 'utf-8'))
 if (!pkg.scripts) pkg.scripts = {}
 // Reconstruct with develop first, preserving all other entries
-const scripts = { develop: 'bash scripts/develop.sh' }
+const scripts = { develop: 'bash develop' }
 for (const [k, v] of Object.entries(pkg.scripts)) {
   if (k !== 'develop') scripts[k] = v
 }

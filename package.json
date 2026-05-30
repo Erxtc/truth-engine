@@ -8,7 +8,8 @@
     "test": "bun run src/test/benchmark.ts",
     "test:quick": "bun run src/test/benchmark.ts --quick",
     "ui:build": "vite build src/ui/frontend",
-    "ui:dev": "vite src/ui/frontend"
+    "ui:dev": "vite src/ui/frontend",
+    "ui:agents": "bun run src/ui/agent-server.ts"
   },
   "dependencies": {
     "jsonrepair": "^3.14.0",

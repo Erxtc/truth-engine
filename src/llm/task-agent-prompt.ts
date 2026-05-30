@@ -134,7 +134,7 @@ KEY PRINCIPLE: Verify each piece BEFORE composing. A wrong component poisons the
 - TRACK PROGRESS: Keep notes/todos.md updated. Mark items [- ✓] when verified. The todo list is your compass — if it's disorganized, your thinking is too.
 - DEBUG smart: when the ${verifierLabel} fails, trace the EXACT failing input through EACH component. Find which component produced the wrong value. Fix THAT component, not random stuff.
 - STUCK ON SAME TODO: If 3+ fixes haven't fixed a substep, your approach to THAT substep is wrong. Re-research it. Consider a different formula or method.
-- TRUST YOUR MATH: if you compute an answer using a stated formula and it disagrees with an example, your computation is more likely correct than the example. Examples can contain errors — formulas don't lie. NEVER change a correct formula to match a wrong example. Instead, note the discrepancy in your finish() summary.`
+- DEBUG DISCREPANCIES: when your computation disagrees with an oracle/example, DEBUG first — don't assume either is correct. Trace the exact failing input through your code. Check your formula against the problem statement word-for-word. If your code differs from the problem's spec, FIX IT — the problem statement is authoritative. Only if after thorough debugging you're certain an example has a genuine error (rare), note the discrepancy in finish().`
     : isHard
     ? `\nRULES:
 - READ THE ${verifierLabel.toUpperCase()} FIRST: Before coding, read ${verifierFile} with read_file("${verifierFile}"). ${isVerifier ? `It runs your code and checks syntax, execution, and functional tests. You must pass it before finish().` : `It contains the EXACT test cases and expected output format. This is your specification — code to match it.`}
@@ -146,7 +146,7 @@ KEY PRINCIPLE: Verify each piece BEFORE composing. A wrong component poisons the
 - BUILD INCREMENTALLY: For compound algorithms, test each component independently before composing. 20 tested lines > 200 untested lines.
 - DEBUG smart: when the ${verifierLabel} fails, write a debug script that traces the EXACT failing input through your code. Print intermediate values. Find the specific line where values deviate. Fix THAT line, not random stuff.
 - RE-RESEARCH WHEN STUCK: If 3+ fixes haven't reduced the failure count, the algorithm may be fundamentally wrong. Use web_search() to research the correct approach from scratch. Delete the old file and start fresh.
-- TRUST YOUR MATH: if you compute an answer using a stated formula and it disagrees with an example, your computation is more likely correct than the example. Examples can contain errors — formulas don't lie. NEVER change a correct formula to match a wrong example. Instead, note the discrepancy in your finish() summary.`
+- DEBUG DISCREPANCIES: when your computation disagrees with an oracle/example, DEBUG first — don't assume either is correct. Trace the exact failing input through your code. Check your formula against the problem statement word-for-word. If your code differs from the problem's spec, FIX IT — the problem statement is authoritative. Only if after thorough debugging you're certain an example has a genuine error (rare), note the discrepancy in finish().`
     : `\nRULES:
 - NEVER skip testing — you MUST run the verification and see all tests pass before finish()
 - One Action per response — never chain multiple actions
@@ -154,7 +154,7 @@ KEY PRINCIPLE: Verify each piece BEFORE composing. A wrong component poisons the
 - Write the COMPLETE solution — no stubs, no TODOs, no wrappers
 - The ${verifierLabel} is the final judge — run it FIRST after writing code (step 3 in workflow). ${isVerifier ? `It checks your solution and tells you what passed/failed. Use that to debug.` : `It gives you precise expected vs got values. Use those to debug.`}
 - DEBUG smart: when the ${verifierLabel} fails, write a debug script that traces the EXACT failing input through your code. Print intermediate values. Find the specific line where values deviate. Fix THAT line, not random stuff.
-- TRUST YOUR MATH: if you compute an answer using a stated formula and it disagrees with an example, your computation is more likely correct than the example. Examples can contain errors — formulas don't lie. NEVER change a correct formula to match a wrong example. Instead, note the discrepancy in your finish() summary.`
+- DEBUG DISCREPANCIES: when your computation disagrees with an oracle/example, DEBUG first — don't assume either is correct. Trace the exact failing input through your code. Check your formula against the problem statement word-for-word. If your code differs from the problem's spec, FIX IT — the problem statement is authoritative. Only if after thorough debugging you're certain an example has a genuine error (rare), note the discrepancy in finish().`
 
   const decompositionSection = isDocument ? "" : `\nDECOMPOSITION — spawn peer researchers for independent sub-problems:
 - Use spawn_subagent() when a problem has CLEARLY INDEPENDENT sub-problems that each require non-trivial code. The peer researcher gets their own sandbox, FULL tool access (web search, shell, file I/O), writes code, tests it, and returns the result.

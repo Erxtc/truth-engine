@@ -164,11 +164,16 @@ function parseProblemExamples(problem: string): ParsedExample[] {
 
 /** Strip trailing commentary from expected values: "because ...", "since ...", parenthetical notes, "or equivalent X", etc. */
 function cleanExpected(raw: string): string {
-  return raw
+  // Strip trailing explanations / parenthetical annotations.
+  // IMPORTANT: only strip parenthetical content that looks like natural language
+  // (does NOT contain [, {, ", or ' — those indicate structured data like lists or dicts).
+  const stripped = raw
     .replace(/[;,]?\s*(?:because|since|where|\(i\.e\.|—|–).*$/i, "")
-    .replace(/\.$/, "")
-    // Strip trailing parenthetical annotations: "None (wall blocks path)" → "None", '["a","b"] (max 5, sorted)' → '["a","b"]'
-    .replace(/\s*\([^)]*\)\s*$/, "")
+    .replace(/\.$/, "");
+  // Only strip trailing paren group if it doesn't contain structured data chars
+  const parenStripped = stripped.replace(/\s*\(([^)[\]{}"']*)\)\s*$/, "");
+  const result = parenStripped !== stripped ? parenStripped : stripped;
+  return result
     // Strip "or equivalent X [note]" patterns: "[...] or equivalent shortest path (length 7)" → "[...]"
     .replace(/\s*or\s+equivalent\b.*$/i, "")
     .trim();

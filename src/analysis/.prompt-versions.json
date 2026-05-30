@@ -173,30 +173,6 @@
         "calls": 2,
         "tokens": 0,
         "solvedBy": "1-shot"
-      },
-      {
-        "timestamp": "2026-05-30T00:07:14.707Z",
-        "problem": "dijkstra-shortest-path",
-        "systemPromptHash": "e407c881bde8fb19",
-        "systemPromptPreview": "[hash: e407c881bde8fb19]",
-        "userPrompt": "Write proposedSolution(graph, start, target) implementing Dijkstra's shortest path algorithm. graph is a dict mapping node → list of (neighbor, weight) tuples. All weights are non-negative. Return (distance, path) where distance is the shortest distance, and path is the list of nodes [start, ..., target]. If no path exists, return (None, None).\n\nExample 1: proposedSolution({\"A\":[(\"B\",4),(\"C\",2)], \"B\":[(\"A\",4),(\"D\",5)], \"C\":[(\"A\",2),(\"B\",1),(\"D\",8),(\"E\",10)], \"D\":[(\"B\",5),(\"C\",8),(\"E\",2)], \"E\":[(\"C\",10),(\"D\",2)]}, \"A\", \"E\") → (10, [\"A\", \"C\", \"B\", \"D\", \"E\"])\nExample 2: proposedSolution({\"A\":[(\"B\",1)], \"B\":[(\"A\",1)]}, \"A\", \"B\") → (1, [\"A\", \"B\"])\nExample 3: proposedSolution({\"A\":[(\"B\",1)], \"B\":[(\"A\",1)], \"C\":[(\"D\",1)], \"D\":[(\"C\",1)]}, \"A\", \"D\") → (None, None)",
-        "complexity": "hard",
-        "passed": true,
-        "calls": 2,
-        "tokens": 1400,
-        "solvedBy": "1-shot"
-      },
-      {
-        "timestamp": "2026-05-30T00:09:09.413Z",
-        "problem": "dijkstra-shortest-path",
-        "systemPromptHash": "e407c881bde8fb19",
-        "systemPromptPreview": "[hash: e407c881bde8fb19]",
-        "userPrompt": "Write proposedSolution(graph, start, target) implementing Dijkstra's shortest path algorithm. graph is a dict mapping node → list of (neighbor, weight) tuples. All weights are non-negative. Return (distance, path) where distance is the shortest distance, and path is the list of nodes [start, ..., target]. If no path exists, return (None, None).\n\nExample 1: proposedSolution({\"A\":[(\"B\",4),(\"C\",2)], \"B\":[(\"A\",4),(\"D\",5)], \"C\":[(\"A\",2),(\"B\",1),(\"D\",8),(\"E\",10)], \"D\":[(\"B\",5),(\"C\",8),(\"E\",2)], \"E\":[(\"C\",10),(\"D\",2)]}, \"A\", \"E\") → (10, [\"A\", \"C\", \"B\", \"D\", \"E\"])\nExample 2: proposedSolution({\"A\":[(\"B\",1)], \"B\":[(\"A\",1)]}, \"A\", \"B\") → (1, [\"A\", \"B\"])\nExample 3: proposedSolution({\"A\":[(\"B\",1)], \"B\":[(\"A\",1)], \"C\":[(\"D\",1)], \"D\":[(\"C\",1)]}, \"A\", \"D\") → (None, None)",
-        "complexity": "hard",
-        "passed": true,
-        "calls": 2,
-        "tokens": 1400,
-        "solvedBy": "1-shot"
       }
     ],
     "f6a4d091241663c2": [
@@ -239,35 +215,11 @@
         "calls": 2,
         "tokens": 0,
         "solvedBy": "1-shot"
-      },
-      {
-        "timestamp": "2026-05-30T00:07:18.814Z",
-        "problem": "edit-distance",
-        "systemPromptHash": "e407c881bde8fb19",
-        "systemPromptPreview": "[hash: e407c881bde8fb19]",
-        "userPrompt": "Write proposedSolution(s1, s2) computing the Levenshtein edit distance between two strings. Allowed operations: insert, delete, substitute (each cost 1). Use the Wagner-Fischer DP algorithm. Return integer distance.\n\nExample 1: proposedSolution(\"kitten\", \"sitting\") → 3 (k→s, e→i, +g)\nExample 2: proposedSolution(\"sunday\", \"saturday\") → 3\nExample 3: proposedSolution(\"abc\", \"abc\") → 0\nExample 4: proposedSolution(\"\", \"hello\") → 5",
-        "complexity": "hard",
-        "passed": true,
-        "calls": 2,
-        "tokens": 917,
-        "solvedBy": "1-shot"
       }
     ],
     "a1eb219016647da6": [
       {
         "timestamp": "2026-05-30T00:04:50.239Z",
-        "problem": "LIS",
-        "systemPromptHash": "e407c881bde8fb19",
-        "systemPromptPreview": "[hash: e407c881bde8fb19]",
-        "userPrompt": "Write proposedSolution(arr) that finds the length of the longest increasing subsequence using patience sorting (O(n log n)). Return the length (integer).\n\nExample 1: proposedSolution([10, 9, 2, 5, 3, 7, 101, 18]) → 4 ([2, 3, 7, 101] or [2, 5, 7, 101])\nExample 2: proposedSolution([0, 1, 0, 3, 2, 3]) → 4 ([0, 1, 2, 3])\nExample 3: proposedSolution([7, 7, 7, 7, 7, 7, 7]) → 1",
-        "complexity": "hard",
-        "passed": true,
-        "calls": 2,
-        "tokens": 798,
-        "solvedBy": "1-shot"
-      },
-      {
-        "timestamp": "2026-05-30T00:07:20.867Z",
         "problem": "LIS",
         "systemPromptHash": "e407c881bde8fb19",
         "systemPromptPreview": "[hash: e407c881bde8fb19]",
@@ -391,91 +343,37 @@
         "solvedBy": "1-shot"
       }
     ],
-    "2397537cfb764672": [
+    "eb05fdda40a7952f": [
       {
-        "timestamp": "2026-05-30T00:07:08.429Z",
-        "problem": "Optimize a JavaScript sort function for large integer arrays (>1M elements).\nCur",
-        "systemPromptHash": "335a7840dd2a32a0",
-        "systemPromptPreview": "[medium] sorting: Optimize a JavaScript sort function for large integer arrays (>1M elements).\nCurrent baseline: Array.prototype.sort() on [1_000_000 random integers].\nTarget: measurable throughput improvement with no ",
-        "userPrompt": "Optimize a JavaScript sort function for large integer arrays (>1M elements).\nCurrent baseline: Array.prototype.sort() on [1_000_000 random integers].\nTarget: measurable throughput improvement with no correctness regression.",
-        "complexity": "medium",
-        "passed": true,
-        "calls": 2,
-        "tokens": 0,
-        "solvedBy": "repair"
-      }
-    ],
-    "cb679bc73528a91d": [
-      {
-        "timestamp": "2026-05-30T00:07:10.228Z",
-        "problem": "Build a Python CLI tool in main.py that computes summary statistics for a CSV fi",
-        "systemPromptHash": "90af89fda09cc834",
-        "systemPromptPreview": "[medium] cli-project: Build a Python CLI tool in main.py that computes summary statistics for a CSV file. It should:\n- Accept a filename as argument: python3 main.py <file.csv>\n- The CSV has headers in the first row\n- Prin",
-        "userPrompt": "Build a Python CLI tool in main.py that computes summary statistics for a CSV file. It should:\n- Accept a filename as argument: python3 main.py <file.csv>\n- The CSV has headers in the first row\n- Print for each NUMERIC column: \"COLNAME: min=X, max=Y, mean=Z, median=W\" (values rounded to 2 decimal places)\n- Skip non-numeric columns (print \"COLNAME: non-numeric, skipped\")\n- Handle empty CSV files: print \"Error: empty file\" and exit 1\n- If file doesn't exist: print \"Error: file not found\" and exit 1\n- If no filename given: print \"Usage: python3 main.py <file.csv>\" and exit 1\n\nUse only Python built-in modules (csv module is fine). Write a README.md explaining the design.",
-        "complexity": "medium",
-        "passed": false,
-        "calls": 1,
-        "tokens": 0,
-        "solvedBy": "pipeline"
-      }
-    ],
-    "f19f79072729b1d0": [
-      {
-        "timestamp": "2026-05-30T00:07:12.654Z",
-        "problem": "gaussian-elimination",
-        "systemPromptHash": "e407c881bde8fb19",
-        "systemPromptPreview": "[hash: e407c881bde8fb19]",
-        "userPrompt": "Write proposedSolution(A, b) that solves Ax=b using Gaussian elimination with partial pivoting. A is n×n (list of lists), b is list of length n. Return solution x as list.\n\nExample 1: proposedSolution([[2,1],[1,-1]], [5,1]) → [2, 1] because 2x+y=5, x-y=1\nExample 2: proposedSolution([[3,2],[1,4]], [7,9]) → [1, 2] because 3x+2y=7, x+4y=9\nExample 3: proposedSolution([[1,2,3],[2,3,1],[3,1,2]], [14,11,11]) → [1, 2, 3]",
-        "complexity": "hard",
-        "passed": true,
-        "calls": 2,
-        "tokens": 1070,
-        "solvedBy": "1-shot"
-      },
-      {
-        "timestamp": "2026-05-30T00:09:05.284Z",
-        "problem": "gaussian-elimination",
-        "systemPromptHash": "e407c881bde8fb19",
-        "systemPromptPreview": "[hash: e407c881bde8fb19]",
-        "userPrompt": "Write proposedSolution(A, b) that solves Ax=b using Gaussian elimination with partial pivoting. A is n×n (list of lists), b is list of length n. Return solution x as list.\n\nExample 1: proposedSolution([[2,1],[1,-1]], [5,1]) → [2, 1] because 2x+y=5, x-y=1\nExample 2: proposedSolution([[3,2],[1,4]], [7,9]) → [1, 2] because 3x+2y=7, x+4y=9\nExample 3: proposedSolution([[1,2,3],[2,3,1],[3,1,2]], [14,11,11]) → [1, 2, 3]",
-        "complexity": "hard",
-        "passed": true,
-        "calls": 2,
-        "tokens": 1070,
-        "solvedBy": "1-shot"
-      }
-    ],
-    "76ff5d7c030920e3": [
-      {
-        "timestamp": "2026-05-30T00:07:16.763Z",
-        "problem": "topological-sort",
-        "systemPromptHash": "dd55b0cb0539b5c3",
-        "systemPromptPreview": "[hash: dd55b0cb0539b5c3]",
-        "userPrompt": "Write proposedSolution(graph) that performs topological sort on a DAG using Kahn's algorithm. graph is a dict of node → list of neighbors. Return list of nodes in topological order. Assume graph is a valid DAG (no cycles).\n\nExample 1: proposedSolution({\"A\":[\"B\",\"C\"], \"B\":[\"D\"], \"C\":[\"D\"], \"D\":[]}) → [\"A\", \"B\", \"C\", \"D\"] or [\"A\", \"C\", \"B\", \"D\"]\nExample 2: proposedSolution({\"5\":[\"2\",\"0\"], \"4\":[\"0\",\"1\"], \"2\":[\"3\"], \"3\":[\"1\"], \"1\":[], \"0\":[]}) → Any valid topological order\nExample 3: proposedSolution({\"A\":[], \"B\":[], \"C\":[]}) → Any permutation of A, B, C",
+        "timestamp": "2026-05-30T00:11:10.396Z",
+        "problem": "glycolysis-model",
+        "systemPromptHash": "5738974eaa9d94a9",
+        "systemPromptPreview": "[hash: 5738974eaa9d94a9]",
+        "userPrompt": "Write proposedSolution(glucose_mmol, atp_existing_mmol, mode) that models glycolysis ATP yield: 1 glucose → 2 ATP (net) + 2 NADH. Under aerobic conditions, 2 NADH → ~5 ATP (oxidative phosphorylation), total theoretical cap = 7 ATP per glucose. Under anaerobic, NADH not converted to ATP, so 2 ATP per glucose. After 10 glucose molecules processed, enzyme saturation reduces net yield to 1.5 ATP/glucose. ATP regeneration consumes some produced ATP (10% overhead). ATP is never destroyed — conservation check validates input + produced = existing + new_output.\n\nInput: glucose_mmol (float, mmol of glucose available), atp_existing_mmol (float, mmol of ATP already present), mode (\"aerobic\" or \"anaerobic\").\nReturn: {\"total_atp\": ..., \"from_glycolysis\": ..., \"from_nadh\": ..., \"overhead_consumed\": ..., \"conservation_ok\": bool, \"saturation_applied\": bool}\n\nExample 1: proposedSolution(1, 0, \"aerobic\") → {\"total_atp\": 6.3, \"from_glycolysis\": 2.0, \"from_nadh\": 5.0, \"overhead_consumed\": 0.7, \"conservation_ok\": true, \"saturation_applied\": false}\nExample 2: proposedSolution(1, 0, \"anaerobic\") → {\"total_atp\": 1.8, \"from_glycolysis\": 2.0, \"from_nadh\": 0.0, \"overhead_consumed\": 0.2, \"conservation_ok\": true, \"saturation_applied\": false}\nExample 3: proposedSolution(15, 10, \"aerobic\") → saturation applied (15 > 10 threshold), lower per-glucose yield, conservation_ok: true",
         "complexity": "hard",
         "passed": false,
         "calls": 4,
-        "tokens": 1934,
+        "tokens": 0,
         "solvedBy": "pipeline"
       }
     ],
-    "97d3951f447806e4": [
+    "b184eaa6a211c3ce": [
       {
-        "timestamp": "2026-05-30T00:07:34.009Z",
-        "problem": "glycolysis-model",
-        "systemPromptHash": "e407c881bde8fb19",
-        "systemPromptPreview": "[hash: e407c881bde8fb19]",
-        "userPrompt": "Write proposedSolution(glucose_mmol, atp_existing_mmol, mode) that models glycolysis ATP yield: 1 glucose → 2 ATP (net) + 2 NADH. Under aerobic conditions, 2 NADH → ~5 ATP (oxidative phosphorylation), total theoretical cap = 7 ATP per glucose. Under anaerobic, NADH not converted to ATP, so 2 ATP per glucose. After 10 glucose molecules processed, enzyme saturation reduces net yield to 1.5 ATP/glucose. ATP regeneration consumes some produced ATP (10% overhead). ATP is never destroyed — conservation check validates input + produced = existing + new_output.\n\nInput: glucose_mmol (float, mmol of glucose available), atp_existing_mmol (float, mmol of ATP already present), mode (\"aerobic\" or \"anaerobic\").\nReturn: {\"total_atp\": ..., \"from_glycolysis\": ..., \"from_nadh\": ..., \"overhead_consumed\": ..., \"conservation_ok\": bool, \"saturation_applied\": bool}\n\nExample 1: proposedSolution(1, 0, \"aerobic\") → {\"total_atp\": 6.3, \"from_glycolysis\": 2.0, \"from_nadh\": 5.0, \"overhead_consumed\": 0.7, \"conservation_ok\": true, \"saturation_applied\": false}\nExample 2: proposedSolution(1, 0, \"anaerobic\") → {\"total_atp\": 1.8, \"from_glycolysis\": 2.0, \"from_nadh\": 0.0, \"overhead_consumed\": 0.2, \"conservation_ok\": true, \"saturation_applied\": false}\nExample 3: proposedSolution(15, 10, \"aerobic\") → saturation applied (15 > 10 threshold), lower per-glucose yield, conservation_ok: true",
-        "complexity": "hard",
+        "timestamp": "2026-05-30T00:11:12.879Z",
+        "problem": "sir-model",
+        "systemPromptHash": "335a7840dd2a32a0",
+        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "userPrompt": "Write proposedSolution(S0, I0, R0, beta, gamma, days) that runs a deterministic SIR compartmental model. Use Euler integration with daily time steps (Δt = 1). The SIR differential equations are:\n\ndS/dt = -β * S * I / N\ndI/dt = β * S * I / N - γ * I\ndR/dt = γ * I\n\nwhere N = S + I + R is the total population (N stays constant). Using Euler integration:\n\nS_next = S - β * S * I / N\nI_next = I + β * S * I / N - γ * I\nR_next = R + γ * I\n\nReturn a dict with keys \"S\", \"I\", \"R\" — each is a list of length days+1 with the daily compartment values (doubles). Round all values to 1 decimal place.\n\nExample 1: proposedSolution(1000, 1, 0, 0.3, 0.1, 5) → day 0: 1000/1/0; day 1: S=999.7, I=1.1, R=0.1; etc.\nExample 2: proposedSolution(100, 5, 0, 0.5, 0.2, 3)",
+        "complexity": "medium",
         "passed": true,
         "calls": 2,
-        "tokens": 3141,
+        "tokens": 2029,
         "solvedBy": "1-shot"
       }
     ],
     "df4398f45a60bc1d": [
       {
-        "timestamp": "2026-05-30T00:07:36.917Z",
+        "timestamp": "2026-05-30T00:11:15.394Z",
         "problem": "gillespie-sir",
         "systemPromptHash": "e407c881bde8fb19",
         "systemPromptPreview": "[hash: e407c881bde8fb19]",
@@ -483,13 +381,13 @@
         "complexity": "hard",
         "passed": true,
         "calls": 2,
-        "tokens": 1702,
+        "tokens": 1692,
         "solvedBy": "1-shot"
       }
     ],
     "6220a673e6217cb8": [
       {
-        "timestamp": "2026-05-30T00:07:39.516Z",
+        "timestamp": "2026-05-30T00:11:18.186Z",
         "problem": "projectile-motion",
         "systemPromptHash": "e407c881bde8fb19",
         "systemPromptPreview": "[hash: e407c881bde8fb19]",
@@ -497,13 +395,27 @@
         "complexity": "hard",
         "passed": true,
         "calls": 2,
-        "tokens": 2095,
+        "tokens": 0,
+        "solvedBy": "1-shot"
+      }
+    ],
+    "bacddd1705ad2fc0": [
+      {
+        "timestamp": "2026-05-30T00:11:20.251Z",
+        "problem": "cournot-duopoly",
+        "systemPromptHash": "335a7840dd2a32a0",
+        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "userPrompt": "Write proposedSolution(a, b, c1, c2) that solves a Cournot duopoly. Market demand: P = a - b*Q where Q = q1 + q2. Firm i's cost: C_i = c_i * q_i. Firm i maximizes π_i = P*q_i - c_i*q_i taking q_j as given. Solve the system of FOCs for q1, q2. Return tuple (q1, q2, P, π1, π2). All values to 2 decimal places. Input constraints: a, b > 0, c1, c2 ≥ 0, a > max(c1, c2).\n\nExample 1: proposedSolution(100, 1, 10, 10) → (30.0, 30.0, 40.0, 900.0, 900.0) (symmetric: q_i = (a-c)/(3b) = 30, P = a - 2bq = 40, π = 900)\nExample 2: proposedSolution(100, 1, 10, 20) → (33.33, 23.33, 43.33, 1111.11, 544.44)\nExample 3: proposedSolution(50, 2, 5, 5) → (7.5, 7.5, 20.0, 112.5, 112.5)",
+        "complexity": "simple",
+        "passed": true,
+        "calls": 2,
+        "tokens": 1369,
         "solvedBy": "1-shot"
       }
     ],
     "6723161c51611ce0": [
       {
-        "timestamp": "2026-05-30T00:07:42.043Z",
+        "timestamp": "2026-05-30T00:11:22.712Z",
         "problem": "nash-equilibrium",
         "systemPromptHash": "e407c881bde8fb19",
         "systemPromptPreview": "[hash: e407c881bde8fb19]",
@@ -515,129 +427,101 @@
         "solvedBy": "1-shot"
       }
     ],
-    "6e97d744b20ab77b": [
+    "b018b3a3a2d3c79c": [
       {
-        "timestamp": "2026-05-30T00:07:44.103Z",
-        "problem": "lru-cache",
-        "systemPromptHash": "e407c881bde8fb19",
-        "systemPromptPreview": "[hash: e407c881bde8fb19]",
-        "userPrompt": "Write proposedSolution(capacity, operations) implementing an LRU (Least Recently Used) cache with O(1) get and put using a doubly-linked list + hashmap. capacity is a positive integer (max cache size). operations is a list where each element is either: [\"put\", key, value] (insert/update — if full, evict the least-recently-used key before inserting) or [\"get\", key] (return value, or -1 if key not found). Accessing a key (get or put of existing key) marks it as most-recently-used. Return a list of results: for \"put\", return None; for \"get\", return the value (or -1).\n\nExample 1: proposedSolution(2, [[\"put\", 1, 10], [\"put\", 2, 20], [\"get\", 1], [\"put\", 3, 30], [\"get\", 2], [\"get\", 3]]) → [None, None, 10, None, -1, 30] (key 2 was evicted when key 3 was inserted)\nExample 2: proposedSolution(1, [[\"put\", 1, 100], [\"get\", 1], [\"put\", 2, 200], [\"get\", 1], [\"get\", 2]]) → [None, 100, None, -1, 200]\nExample 3: proposedSolution(3, [[\"put\", 1, 10], [\"put\", 2, 20], [\"put\", 1, 100], [\"get\", 1], [\"get\", 2]]) → [None, None, None, 100, 20] (update key 1, it's now most-recent)",
-        "complexity": "hard",
-        "passed": true,
-        "calls": 2,
-        "tokens": 1468,
-        "solvedBy": "1-shot"
-      }
-    ],
-    "3d3126f6a5882034": [
-      {
-        "timestamp": "2026-05-30T00:07:46.154Z",
-        "problem": "kmp-string-search",
-        "systemPromptHash": "e407c881bde8fb19",
-        "systemPromptPreview": "[hash: e407c881bde8fb19]",
-        "userPrompt": "Write proposedSolution(text, pattern) implementing the Knuth-Morris-Pratt (KMP) string matching algorithm. Compute the failure function (LPS array — longest proper prefix that is also suffix) for the pattern, then use it to search text. Return the list of all starting indices (0-indexed) where pattern occurs in text. Return empty list if no matches. Must be O(n + m) where n = len(text), m = len(pattern). Handle overlapping matches.\n\nExample 1: proposedSolution(\"ABABDABACDABABCABAB\", \"ABABCABAB\") → [10] (pattern \"ABABCABAB\" found at index 10)\nExample 2: proposedSolution(\"AAAAA\", \"AA\") → [0, 1, 2, 3] (overlapping matches)\nExample 3: proposedSolution(\"HELLO WORLD\", \"ABC\") → []\nExample 4: proposedSolution(\"ABCABCABC\", \"ABCABC\") → [0, 3]",
-        "complexity": "hard",
-        "passed": true,
-        "calls": 2,
-        "tokens": 1064,
-        "solvedBy": "1-shot"
-      }
-    ],
-    "fcf87b2a739a312c": [
-      {
-        "timestamp": "2026-05-30T00:07:48.206Z",
-        "problem": "bellman-ford",
-        "systemPromptHash": "e407c881bde8fb19",
-        "systemPromptPreview": "[hash: e407c881bde8fb19]",
-        "userPrompt": "Write proposedSolution(graph, source) implementing the Bellman-Ford algorithm with negative cycle detection. graph is a list of (u, v, weight) edges where u and v are strings. source is a string node name. Return a dict with: \"distances\" (dict mapping node→shortest distance from source, float('inf') for unreachable), \"predecessors\" (dict mapping node→previous node in shortest path, None for source and unreachable), \"has_negative_cycle\" (bool — True if any node reachable from source can be part of a negative cycle). Run exactly V-1 relaxation passes where V is the number of unique nodes.\n\nExample 1: proposedSolution([(\"A\",\"B\",4), (\"A\",\"C\",2), (\"B\",\"C\",-3), (\"B\",\"D\",2), (\"C\",\"D\",3)], \"A\") → {\"distances\": {\"A\":0,\"B\":4,\"C\":1,\"D\":4}, \"predecessors\": {\"A\":None,\"B\":\"A\",\"C\":\"B\",\"D\":\"C\"}, \"has_negative_cycle\": False}\nExplanation: A→B=4, A→C=2 initial; then via B: A→B→C = 4-3 = 1 (beats 2); via C: A→B→C→D = 1+3 = 4 (beats A→B→D = 6)\nExample 2: proposedSolution([(\"A\",\"B\",1), (\"B\",\"C\",-2), (\"C\",\"A\",-1)], \"A\") → has_negative_cycle: True (A→B→C→A = 1-2-1 = -2)\nExample 3: proposedSolution([(\"A\",\"B\",5)], \"A\") → {\"distances\": {\"A\":0,\"B\":5}, \"predecessors\": {\"A\":None,\"B\":\"A\"}, \"has_negative_cycle\": False}\nExample 4: proposedSolution([(\"X\",\"Y\",3)], \"A\") → distances: {\"A\":0, \"X\":inf, \"Y\":inf}, has_negative_cycle: False",
-        "complexity": "hard",
-        "passed": true,
-        "calls": 2,
-        "tokens": 2109,
-        "solvedBy": "1-shot"
-      }
-    ],
-    "b36cf8059253842a": [
-      {
-        "timestamp": "2026-05-30T00:08:33.051Z",
-        "problem": "Write proposedSolution(arr) that sorts an array of numbers in ascending order. E",
+        "timestamp": "2026-05-30T00:11:24.770Z",
+        "problem": "pkcs7-padding",
         "systemPromptHash": "335a7840dd2a32a0",
-        "systemPromptPreview": "[trivial] sorting: Write proposedSolution(arr) that sorts an array of numbers in ascending order. Example: proposedSolution([3,1,2]) → [1,2,3]",
-        "userPrompt": "Write proposedSolution(arr) that sorts an array of numbers in ascending order. Example: proposedSolution([3,1,2]) → [1,2,3]",
+        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "userPrompt": "Write proposedSolution(data, block_size, mode) that adds (\"pad\") or removes (\"unpad\") PKCS#7 padding. data is either a bytes input (already decoded for pad mode, to be unpadded for unpad mode) as a string where each character represents a byte value (0-255). Use Python's ord() and chr() to access byte values. mode is either \"pad\" or \"unpad\". Return the padded/unpadded string. Return None if unpadding fails.\n\nExample 1: proposedSolution(\"YELLOW SUBMARINE\", 20, \"pad\") → \"YELLOW SUBMARINE\\x04\\x04\\x04\\x04\"\nExample 2: proposedSolution(\"YELLOW SUBMARINE\", 16, \"pad\") → \"YELLOW SUBMARINE\\x10\\x10\\x10\\x10\\x10\\x10\\x10\\x10\\x10\\x10\\x10\\x10\\x10\\x10\\x10\\x10\"\nExample 3: proposedSolution(\"YELLOW SUBMARINE\\x04\\x04\\x04\\x04\", 20, \"unpad\") → \"YELLOW SUBMARINE\"\nExample 4: proposedSolution(\"ABC\\x03\\x03\", 4, \"unpad\") → None",
+        "complexity": "simple",
+        "passed": true,
+        "calls": 2,
+        "tokens": 0,
+        "solvedBy": "1-shot"
+      }
+    ],
+    "8f74b874f742b785": [
+      {
+        "timestamp": "2026-05-30T00:11:27.653Z",
+        "problem": "hex-to-base64",
+        "systemPromptHash": "335a7840dd2a32a0",
+        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "userPrompt": "Write proposedSolution(hex_string) that converts a hex-encoded string to base64 encoding. hex_string is a string of hex characters (0-9, a-f, lowercase). Return the base64-encoded string.\n\nBase64 encoding: group bits into 6-bit chunks, each chunk maps to a character from A-Za-z0-9+/ (0-25=A-Z, 26-51=a-z, 52-61=0-9, 62=+, 63=/). Pad with = so the output length is a multiple of 4. Do NOT use base64 or binascii stdlib modules — implement the algorithm.\n\nExample 1: proposedSolution(\"49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d\") → \"SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t\"\nExample 2: proposedSolution(\"68656c6c6f\") → \"aGVsbG8=\"\nExample 3: proposedSolution(\"4d\") → \"TQ==\"\nExample 4: proposedSolution(\"\") → \"\"\nExample 5: proposedSolution(\"4d616e\") → \"TWFu\"",
         "complexity": "trivial",
         "passed": true,
-        "calls": 1,
-        "tokens": 0,
+        "calls": 2,
+        "tokens": 1782,
+        "solvedBy": "1-shot"
+      }
+    ],
+    "e3d505b6aef45529": [
+      {
+        "timestamp": "2026-05-30T00:11:29.709Z",
+        "problem": "modular-inverse",
+        "systemPromptHash": "335a7840dd2a32a0",
+        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "userPrompt": "Write proposedSolution(a, m) that computes the modular multiplicative inverse of a modulo m using the Extended Euclidean Algorithm. Return x such that (a * x) % m == 1. a and m are positive integers with gcd(a, m) == 1. Result x is in range [1, m-1].\n\nExample 1: proposedSolution(3, 11) → 4 (3*4=12, 12%11=1)\nExample 2: proposedSolution(7, 26) → 15 (7*15=105, 105%26=1)\nExample 3: proposedSolution(17, 3120) → 2753\nExample 4: proposedSolution(5, 21) → 17 (5*17=85, 85%21=1)\nExample 5: proposedSolution(1, 100) → 1",
+        "complexity": "simple",
+        "passed": true,
+        "calls": 2,
+        "tokens": 1101,
+        "solvedBy": "1-shot"
+      }
+    ],
+    "d7309ceb74c45452": [
+      {
+        "timestamp": "2026-05-30T00:11:31.766Z",
+        "problem": "diffie-hellman",
+        "systemPromptHash": "335a7840dd2a32a0",
+        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "userPrompt": "Write proposedSolution(p, g, a_private, b_private) that simulates Diffie-Hellman key exchange. Compute A = g^a_private mod p, B = g^b_private mod p, and the shared secret = B^a_private mod p (which equals A^b_private mod p). Return a tuple (A, B, shared_secret). Use modular exponentiation (pow(base, exp, mod) in Python).\n\nExample 1: proposedSolution(23, 5, 6, 15) → (8, 19, 2)\nExample 2: proposedSolution(37, 2, 5, 7) → (32, 17, 19)\nExample 3: proposedSolution(11, 2, 3, 4) → (8, 5, 4)",
+        "complexity": "simple",
+        "passed": true,
+        "calls": 2,
+        "tokens": 1092,
         "solvedBy": "1-shot"
       }
     ],
     "539dad36d32cd2b1": [
       {
-        "timestamp": "2026-05-30T00:08:56.108Z",
-        "problem": "fibonacci",
+        "timestamp": "2026-05-30T00:11:35.561Z",
+        "problem": "Write proposedSolution(n) returning the nth Fibonacci number (fib(0)=0, fib(1)=1",
         "systemPromptHash": "335a7840dd2a32a0",
-        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "systemPromptPreview": "[medium] fibonacci: Write proposedSolution(n) returning the nth Fibonacci number (fib(0)=0, fib(1)=1). n is a non-negative integer.",
         "userPrompt": "Write proposedSolution(n) returning the nth Fibonacci number (fib(0)=0, fib(1)=1). n is a non-negative integer.",
-        "complexity": "trivial",
-        "passed": true,
-        "calls": 2,
-        "tokens": 515,
-        "solvedBy": "1-shot"
-      }
-    ],
-    "d280b559608617d2": [
-      {
-        "timestamp": "2026-05-30T00:08:59.111Z",
-        "problem": "sorting-js",
-        "systemPromptHash": "258a53278a6bbb08",
-        "systemPromptPreview": "[hash: 258a53278a6bbb08]",
-        "userPrompt": "Write proposedSolution(arr) that sorts an array of integers in ascending order. Must be a valid JavaScript function. Do NOT use the built-in Array.prototype.sort().",
         "complexity": "medium",
         "passed": true,
         "calls": 2,
-        "tokens": 1275,
+        "tokens": 0,
         "solvedBy": "1-shot"
       }
     ],
-    "2858256b820b3de0": [
+    "47ada72fbaa003f0": [
       {
-        "timestamp": "2026-05-30T00:09:01.168Z",
-        "problem": "linear-2x2",
+        "timestamp": "2026-05-30T00:11:45.866Z",
+        "problem": "Write proposedSolution(coins, amount) that returns the minimum number of coins n",
         "systemPromptHash": "335a7840dd2a32a0",
-        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
-        "userPrompt": "Write proposedSolution(a1,b1,c1, a2,b2,c2) that solves the 2x2 linear system using Cramer's rule. Return a tuple (x, y). Assume unique solution (det ≠ 0).\n\nExample 1: proposedSolution(1, 1, 5, 1, -1, 1) → (3, 2) because x+y=5, x-y=1\nExample 2: proposedSolution(2, 3, 8, 1, 4, 9) → (1, 2) because 2x+3y=8, x+4y=9\nExample 3: proposedSolution(3, -2, 4, 2, 1, 5) → (2, 1) because 3x-2y=4, 2x+y=5",
-        "complexity": "simple",
-        "passed": true,
-        "calls": 2,
-        "tokens": 1086,
-        "solvedBy": "1-shot"
-      }
-    ],
-    "772419e2ad46e44d": [
-      {
-        "timestamp": "2026-05-30T00:09:03.228Z",
-        "problem": "matrix-multiply",
-        "systemPromptHash": "335a7840dd2a32a0",
-        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
-        "userPrompt": "Write proposedSolution(A, B) that multiplies two matrices A (m×n) and B (n×p). Return the m×p result as list of lists.\n\nExample 1: proposedSolution([[1,2],[3,4]], [[5,6],[7,8]]) → [[19,22],[43,50]]\nExample 2: proposedSolution([[2,0],[0,2]], [[1,2],[3,4]]) → [[2,4],[6,8]]\nExample 3: proposedSolution([[1,2,3]], [[4],[5],[6]]) → [[32]]",
+        "systemPromptPreview": "[medium] coin_change: Write proposedSolution(coins, amount) that returns the minimum number of coins needed to make the given amount. coins is a list of coin denominations. Return -1 if the amount cannot be made. Example: ",
+        "userPrompt": "Write proposedSolution(coins, amount) that returns the minimum number of coins needed to make the given amount. coins is a list of coin denominations. Return -1 if the amount cannot be made. Example: proposedSolution([1,5,10], 12) → 3 (10+1+1). Example: proposedSolution([2], 3) → -1. Example: proposedSolution([1], 0) → 0.",
         "complexity": "medium",
         "passed": true,
         "calls": 2,
-        "tokens": 999,
+        "tokens": 0,
         "solvedBy": "1-shot"
       }
     ],
-    "d072eed27d5be8d0": [
+    "2cb5839a1579c2d5": [
       {
-        "timestamp": "2026-05-30T00:09:07.347Z",
-        "problem": "bfs-shortest-path",
+        "timestamp": "2026-05-30T00:11:55.025Z",
+        "problem": "Write proposedSolution(arr, target) that performs binary search on a sorted arra",
         "systemPromptHash": "335a7840dd2a32a0",
-        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
-        "userPrompt": "Write proposedSolution(graph, start, target) that finds the shortest path from start to target using BFS. graph is an adjacency list (dict of node → list of neighbors). Return the path as a list of nodes [start, ..., target], or None if no path exists. All edges have weight 1.\n\nExample 1: proposedSolution({\"A\":[\"B\",\"C\"], \"B\":[\"A\",\"D\"], \"C\":[\"A\",\"D\"], \"D\":[\"B\",\"C\",\"E\"], \"E\":[\"D\"]}, \"A\", \"E\") → [\"A\", \"C\", \"D\", \"E\"] or [\"A\", \"B\", \"D\", \"E\"] (either works, both length 3)\nExample 2: proposedSolution({\"A\":[\"B\"], \"B\":[\"A\",\"C\"], \"C\":[\"B\"]}, \"A\", \"C\") → [\"A\", \"B\", \"C\"]\nExample 3: proposedSolution({\"A\":[\"B\"], \"B\":[\"A\"], \"C\":[\"D\"], \"D\":[\"C\"]}, \"A\", \"D\") → None",
+        "systemPromptPreview": "[medium] binary_search: Write proposedSolution(arr, target) that performs binary search on a sorted array of integers. Return the index of target if found, or -1 if not found. Example: proposedSolution([1,3,5,7,9], 5) → 2. E",
+        "userPrompt": "Write proposedSolution(arr, target) that performs binary search on a sorted array of integers. Return the index of target if found, or -1 if not found. Example: proposedSolution([1,3,5,7,9], 5) → 2. Example: proposedSolution([1,3,5,7,9], 6) → -1. Example: proposedSolution([], 1) → -1.",
         "complexity": "medium",
         "passed": true,
         "calls": 2,
-        "tokens": 1027,
+        "tokens": 0,
         "solvedBy": "1-shot"
       }
     ]
@@ -823,15 +707,15 @@
     "610fd7797ca04e40": {
       "hash": "610fd7797ca04e40",
       "firstSeen": "2026-05-30T00:04:39.673Z",
-      "lastSeen": "2026-05-30T00:09:09.413Z",
-      "totalUses": 3,
+      "lastSeen": "2026-05-30T00:04:39.673Z",
+      "totalUses": 1,
       "uniqueProblems": 1,
       "problemResults": {
         "dijkstra-shortest-path": {
-          "passes": 3,
+          "passes": 1,
           "failures": 0,
-          "totalCalls": 6,
-          "totalTokens": 2800,
+          "totalCalls": 2,
+          "totalTokens": 0,
           "lastPassed": true
         }
       },
@@ -874,15 +758,15 @@
     "5e80e46f97e540bb": {
       "hash": "5e80e46f97e540bb",
       "firstSeen": "2026-05-30T00:04:48.177Z",
-      "lastSeen": "2026-05-30T00:07:18.814Z",
-      "totalUses": 2,
+      "lastSeen": "2026-05-30T00:04:48.177Z",
+      "totalUses": 1,
       "uniqueProblems": 1,
       "problemResults": {
         "edit-distance": {
-          "passes": 2,
+          "passes": 1,
           "failures": 0,
-          "totalCalls": 4,
-          "totalTokens": 917,
+          "totalCalls": 2,
+          "totalTokens": 0,
           "lastPassed": true
         }
       },
@@ -891,15 +775,15 @@
     "a1eb219016647da6": {
       "hash": "a1eb219016647da6",
       "firstSeen": "2026-05-30T00:04:50.239Z",
-      "lastSeen": "2026-05-30T00:07:20.867Z",
-      "totalUses": 2,
+      "lastSeen": "2026-05-30T00:04:50.239Z",
+      "totalUses": 1,
       "uniqueProblems": 1,
       "problemResults": {
         "LIS": {
-          "passes": 2,
+          "passes": 1,
           "failures": 0,
-          "totalCalls": 4,
-          "totalTokens": 1596,
+          "totalCalls": 2,
+          "totalTokens": 798,
           "lastPassed": true
         }
       },
@@ -1041,86 +925,35 @@
       },
       "passRate": 1
     },
-    "2397537cfb764672": {
-      "hash": "2397537cfb764672",
-      "firstSeen": "2026-05-30T00:07:08.429Z",
-      "lastSeen": "2026-05-30T00:07:08.429Z",
-      "totalUses": 1,
-      "uniqueProblems": 1,
-      "problemResults": {
-        "Optimize a JavaScript sort function for large integer arrays (>1M elements).\nCur": {
-          "passes": 1,
-          "failures": 0,
-          "totalCalls": 2,
-          "totalTokens": 0,
-          "lastPassed": true
-        }
-      },
-      "passRate": 1
-    },
-    "cb679bc73528a91d": {
-      "hash": "cb679bc73528a91d",
-      "firstSeen": "2026-05-30T00:07:10.228Z",
-      "lastSeen": "2026-05-30T00:07:10.228Z",
-      "totalUses": 1,
-      "uniqueProblems": 1,
-      "problemResults": {
-        "Build a Python CLI tool in main.py that computes summary statistics for a CSV fi": {
-          "passes": 0,
-          "failures": 1,
-          "totalCalls": 1,
-          "totalTokens": 0,
-          "lastPassed": false
-        }
-      },
-      "passRate": 0
-    },
-    "f19f79072729b1d0": {
-      "hash": "f19f79072729b1d0",
-      "firstSeen": "2026-05-30T00:07:12.654Z",
-      "lastSeen": "2026-05-30T00:09:05.284Z",
-      "totalUses": 2,
-      "uniqueProblems": 1,
-      "problemResults": {
-        "gaussian-elimination": {
-          "passes": 2,
-          "failures": 0,
-          "totalCalls": 4,
-          "totalTokens": 2140,
-          "lastPassed": true
-        }
-      },
-      "passRate": 1
-    },
-    "76ff5d7c030920e3": {
-      "hash": "76ff5d7c030920e3",
-      "firstSeen": "2026-05-30T00:07:16.763Z",
-      "lastSeen": "2026-05-30T00:07:16.763Z",
-      "totalUses": 1,
-      "uniqueProblems": 1,
-      "problemResults": {
-        "topological-sort": {
-          "passes": 0,
-          "failures": 1,
-          "totalCalls": 4,
-          "totalTokens": 1934,
-          "lastPassed": false
-        }
-      },
-      "passRate": 0
-    },
-    "97d3951f447806e4": {
-      "hash": "97d3951f447806e4",
-      "firstSeen": "2026-05-30T00:07:34.009Z",
-      "lastSeen": "2026-05-30T00:07:34.009Z",
+    "eb05fdda40a7952f": {
+      "hash": "eb05fdda40a7952f",
+      "firstSeen": "2026-05-30T00:11:10.396Z",
+      "lastSeen": "2026-05-30T00:11:10.396Z",
       "totalUses": 1,
       "uniqueProblems": 1,
       "problemResults": {
         "glycolysis-model": {
+          "passes": 0,
+          "failures": 1,
+          "totalCalls": 4,
+          "totalTokens": 0,
+          "lastPassed": false
+        }
+      },
+      "passRate": 0
+    },
+    "b184eaa6a211c3ce": {
+      "hash": "b184eaa6a211c3ce",
+      "firstSeen": "2026-05-30T00:11:12.879Z",
+      "lastSeen": "2026-05-30T00:11:12.879Z",
+      "totalUses": 1,
+      "uniqueProblems": 1,
+      "problemResults": {
+        "sir-model": {
           "passes": 1,
           "failures": 0,
           "totalCalls": 2,
-          "totalTokens": 3141,
+          "totalTokens": 2029,
           "lastPassed": true
         }
       },
@@ -1128,8 +961,8 @@
     },
     "df4398f45a60bc1d": {
       "hash": "df4398f45a60bc1d",
-      "firstSeen": "2026-05-30T00:07:36.917Z",
-      "lastSeen": "2026-05-30T00:07:36.917Z",
+      "firstSeen": "2026-05-30T00:11:15.394Z",
+      "lastSeen": "2026-05-30T00:11:15.394Z",
       "totalUses": 1,
       "uniqueProblems": 1,
       "problemResults": {
@@ -1137,7 +970,7 @@
           "passes": 1,
           "failures": 0,
           "totalCalls": 2,
-          "totalTokens": 1702,
+          "totalTokens": 1692,
           "lastPassed": true
         }
       },
@@ -1145,8 +978,8 @@
     },
     "6220a673e6217cb8": {
       "hash": "6220a673e6217cb8",
-      "firstSeen": "2026-05-30T00:07:39.516Z",
-      "lastSeen": "2026-05-30T00:07:39.516Z",
+      "firstSeen": "2026-05-30T00:11:18.186Z",
+      "lastSeen": "2026-05-30T00:11:18.186Z",
       "totalUses": 1,
       "uniqueProblems": 1,
       "problemResults": {
@@ -1154,7 +987,24 @@
           "passes": 1,
           "failures": 0,
           "totalCalls": 2,
-          "totalTokens": 2095,
+          "totalTokens": 0,
+          "lastPassed": true
+        }
+      },
+      "passRate": 1
+    },
+    "bacddd1705ad2fc0": {
+      "hash": "bacddd1705ad2fc0",
+      "firstSeen": "2026-05-30T00:11:20.251Z",
+      "lastSeen": "2026-05-30T00:11:20.251Z",
+      "totalUses": 1,
+      "uniqueProblems": 1,
+      "problemResults": {
+        "cournot-duopoly": {
+          "passes": 1,
+          "failures": 0,
+          "totalCalls": 2,
+          "totalTokens": 1369,
           "lastPassed": true
         }
       },
@@ -1162,8 +1012,8 @@
     },
     "6723161c51611ce0": {
       "hash": "6723161c51611ce0",
-      "firstSeen": "2026-05-30T00:07:42.043Z",
-      "lastSeen": "2026-05-30T00:07:42.043Z",
+      "firstSeen": "2026-05-30T00:11:22.712Z",
+      "lastSeen": "2026-05-30T00:11:22.712Z",
       "totalUses": 1,
       "uniqueProblems": 1,
       "problemResults": {
@@ -1177,69 +1027,69 @@
       },
       "passRate": 1
     },
-    "6e97d744b20ab77b": {
-      "hash": "6e97d744b20ab77b",
-      "firstSeen": "2026-05-30T00:07:44.103Z",
-      "lastSeen": "2026-05-30T00:07:44.103Z",
+    "b018b3a3a2d3c79c": {
+      "hash": "b018b3a3a2d3c79c",
+      "firstSeen": "2026-05-30T00:11:24.770Z",
+      "lastSeen": "2026-05-30T00:11:24.770Z",
       "totalUses": 1,
       "uniqueProblems": 1,
       "problemResults": {
-        "lru-cache": {
+        "pkcs7-padding": {
           "passes": 1,
           "failures": 0,
           "totalCalls": 2,
-          "totalTokens": 1468,
-          "lastPassed": true
-        }
-      },
-      "passRate": 1
-    },
-    "3d3126f6a5882034": {
-      "hash": "3d3126f6a5882034",
-      "firstSeen": "2026-05-30T00:07:46.154Z",
-      "lastSeen": "2026-05-30T00:07:46.154Z",
-      "totalUses": 1,
-      "uniqueProblems": 1,
-      "problemResults": {
-        "kmp-string-search": {
-          "passes": 1,
-          "failures": 0,
-          "totalCalls": 2,
-          "totalTokens": 1064,
-          "lastPassed": true
-        }
-      },
-      "passRate": 1
-    },
-    "fcf87b2a739a312c": {
-      "hash": "fcf87b2a739a312c",
-      "firstSeen": "2026-05-30T00:07:48.206Z",
-      "lastSeen": "2026-05-30T00:07:48.206Z",
-      "totalUses": 1,
-      "uniqueProblems": 1,
-      "problemResults": {
-        "bellman-ford": {
-          "passes": 1,
-          "failures": 0,
-          "totalCalls": 2,
-          "totalTokens": 2109,
-          "lastPassed": true
-        }
-      },
-      "passRate": 1
-    },
-    "b36cf8059253842a": {
-      "hash": "b36cf8059253842a",
-      "firstSeen": "2026-05-30T00:08:33.051Z",
-      "lastSeen": "2026-05-30T00:08:33.051Z",
-      "totalUses": 1,
-      "uniqueProblems": 1,
-      "problemResults": {
-        "Write proposedSolution(arr) that sorts an array of numbers in ascending order. E": {
-          "passes": 1,
-          "failures": 0,
-          "totalCalls": 1,
           "totalTokens": 0,
+          "lastPassed": true
+        }
+      },
+      "passRate": 1
+    },
+    "8f74b874f742b785": {
+      "hash": "8f74b874f742b785",
+      "firstSeen": "2026-05-30T00:11:27.653Z",
+      "lastSeen": "2026-05-30T00:11:27.653Z",
+      "totalUses": 1,
+      "uniqueProblems": 1,
+      "problemResults": {
+        "hex-to-base64": {
+          "passes": 1,
+          "failures": 0,
+          "totalCalls": 2,
+          "totalTokens": 1782,
+          "lastPassed": true
+        }
+      },
+      "passRate": 1
+    },
+    "e3d505b6aef45529": {
+      "hash": "e3d505b6aef45529",
+      "firstSeen": "2026-05-30T00:11:29.709Z",
+      "lastSeen": "2026-05-30T00:11:29.709Z",
+      "totalUses": 1,
+      "uniqueProblems": 1,
+      "problemResults": {
+        "modular-inverse": {
+          "passes": 1,
+          "failures": 0,
+          "totalCalls": 2,
+          "totalTokens": 1101,
+          "lastPassed": true
+        }
+      },
+      "passRate": 1
+    },
+    "d7309ceb74c45452": {
+      "hash": "d7309ceb74c45452",
+      "firstSeen": "2026-05-30T00:11:31.766Z",
+      "lastSeen": "2026-05-30T00:11:31.766Z",
+      "totalUses": 1,
+      "uniqueProblems": 1,
+      "problemResults": {
+        "diffie-hellman": {
+          "passes": 1,
+          "failures": 0,
+          "totalCalls": 2,
+          "totalTokens": 1092,
           "lastPassed": true
         }
       },
@@ -1247,90 +1097,56 @@
     },
     "539dad36d32cd2b1": {
       "hash": "539dad36d32cd2b1",
-      "firstSeen": "2026-05-30T00:08:56.108Z",
-      "lastSeen": "2026-05-30T00:08:56.108Z",
+      "firstSeen": "2026-05-30T00:11:35.561Z",
+      "lastSeen": "2026-05-30T00:11:35.561Z",
       "totalUses": 1,
       "uniqueProblems": 1,
       "problemResults": {
-        "fibonacci": {
+        "Write proposedSolution(n) returning the nth Fibonacci number (fib(0)=0, fib(1)=1": {
           "passes": 1,
           "failures": 0,
           "totalCalls": 2,
-          "totalTokens": 515,
+          "totalTokens": 0,
           "lastPassed": true
         }
       },
       "passRate": 1
     },
-    "d280b559608617d2": {
-      "hash": "d280b559608617d2",
-      "firstSeen": "2026-05-30T00:08:59.111Z",
-      "lastSeen": "2026-05-30T00:08:59.111Z",
+    "47ada72fbaa003f0": {
+      "hash": "47ada72fbaa003f0",
+      "firstSeen": "2026-05-30T00:11:45.866Z",
+      "lastSeen": "2026-05-30T00:11:45.866Z",
       "totalUses": 1,
       "uniqueProblems": 1,
       "problemResults": {
-        "sorting-js": {
+        "Write proposedSolution(coins, amount) that returns the minimum number of coins n": {
           "passes": 1,
           "failures": 0,
           "totalCalls": 2,
-          "totalTokens": 1275,
+          "totalTokens": 0,
           "lastPassed": true
         }
       },
       "passRate": 1
     },
-    "2858256b820b3de0": {
-      "hash": "2858256b820b3de0",
-      "firstSeen": "2026-05-30T00:09:01.168Z",
-      "lastSeen": "2026-05-30T00:09:01.168Z",
+    "2cb5839a1579c2d5": {
+      "hash": "2cb5839a1579c2d5",
+      "firstSeen": "2026-05-30T00:11:55.025Z",
+      "lastSeen": "2026-05-30T00:11:55.025Z",
       "totalUses": 1,
       "uniqueProblems": 1,
       "problemResults": {
-        "linear-2x2": {
+        "Write proposedSolution(arr, target) that performs binary search on a sorted arra": {
           "passes": 1,
           "failures": 0,
           "totalCalls": 2,
-          "totalTokens": 1086,
-          "lastPassed": true
-        }
-      },
-      "passRate": 1
-    },
-    "772419e2ad46e44d": {
-      "hash": "772419e2ad46e44d",
-      "firstSeen": "2026-05-30T00:09:03.228Z",
-      "lastSeen": "2026-05-30T00:09:03.228Z",
-      "totalUses": 1,
-      "uniqueProblems": 1,
-      "problemResults": {
-        "matrix-multiply": {
-          "passes": 1,
-          "failures": 0,
-          "totalCalls": 2,
-          "totalTokens": 999,
-          "lastPassed": true
-        }
-      },
-      "passRate": 1
-    },
-    "d072eed27d5be8d0": {
-      "hash": "d072eed27d5be8d0",
-      "firstSeen": "2026-05-30T00:09:07.347Z",
-      "lastSeen": "2026-05-30T00:09:07.347Z",
-      "totalUses": 1,
-      "uniqueProblems": 1,
-      "problemResults": {
-        "bfs-shortest-path": {
-          "passes": 1,
-          "failures": 0,
-          "totalCalls": 2,
-          "totalTokens": 1027,
+          "totalTokens": 0,
           "lastPassed": true
         }
       },
       "passRate": 1
     }
   },
-  "currentHash": "e407c881bde8fb19",
-  "updatedAt": "2026-05-30T00:09:09.467Z"
+  "currentHash": "335a7840dd2a32a0",
+  "updatedAt": "2026-05-30T00:11:55.025Z"
 }

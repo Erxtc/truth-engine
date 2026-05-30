@@ -901,11 +901,11 @@ Example 12: proposedSolution('1.5e10') → 15000000000.0
 Example 13: proposedSolution('2.5e-3') → 0.0025
 Example 14: proposedSolution('{"nested":{"key":[1,2,3]}}') → {"nested":{"key":[1,2,3]}}
 Example 15: proposedSolution('[{"a":1},{"b":2}]') → [{"a":1},{"b":2}]
-Example 16: proposedSolution('"hello\\nworld"') → "hello\nworld"
-Example 17: proposedSolution('"tab\\there"') → "tab\there"
-Example 18: proposedSolution('"quote\\"inside"') → 'quote"inside'
+Example 16: proposedSolution('"hello\\nworld"') → "hello\\nworld"
+Example 17: proposedSolution('"tab\\there"') → "tab\\there"
+Example 18: proposedSolution('"quote\\"inside"') → "quote\\"inside"
 Example 19: proposedSolution('[true,false,null,0]') → [True,False,None,0]
-Example 20: proposedSolution('{"a b":1,"c\\td":2}') → {"a b":1,"c\td":2}`,
+Example 20: proposedSolution('{"a b":1,"c\\td":2}') → {"a b":1,"c\\td":2}`,
     language: "python",
     complexity: "hard",
   },

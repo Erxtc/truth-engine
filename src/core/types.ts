@@ -16,10 +16,10 @@ export type Domain =
 	| "typescript" | "python" | "c";
 
 export type ExecutablePayload =
-	| { type: "code"; lang: "js" | "ts" | "python" | "c"; source: string }
+	| { type: "code"; lang: "js" | "ts" | "python" | "c" | "markdown" | "html" | "mixed"; source: string }
 	| {
 		type: "project";
-		lang: "js" | "ts" | "python" | "c";
+		lang: "js" | "ts" | "python" | "c" | "mixed";
 		files: Record<string, string>;
 		gitRepo?: string;
 		installCommand?: string;

@@ -85,8 +85,13 @@ function runPipeline(problem: TestProblem): { passed: boolean; calls: number; to
   const langEnv = problem.language ? `PROBLEM_LANGUAGE=${problem.language}` : "";
   try {
     const t0 = Date.now();
+    // Shell-escape special characters for the command string.
+    // All values are also passed via the env object (safe, no shell interpretation),
+    // but the shell command string needs escaping for $, `, \, and ".
+    const shellEscape = (s: string) => s.replace(/[\\"$`!]/g, '\\$&').replace(/\n/g, ' ');
+    const descEscaped = shellEscape(problem.description);
     const output = execSync(
-      `${langEnv} PROBLEM_COMPLEXITY=${problem.complexity} DOMAIN=${domain} PROBLEM_DESC="${problem.description.replace(/"/g, '\\"')}" NO_UI=1 bun run ${ROOT}/src/main.ts`,
+      `${langEnv} PROBLEM_COMPLEXITY=${problem.complexity} DOMAIN=${domain} PROBLEM_DESC="${descEscaped}" NO_UI=1 bun run ${ROOT}/src/main.ts`,
       { cwd: ROOT, timeout: 300_000, encoding: "utf-8", env: { ...process.env, DOMAIN: domain, PROBLEM_DESC: problem.description, PROBLEM_COMPLEXITY: problem.complexity, NO_UI: "1", PROJECT_TESTS: projectTestsJson, PROBLEM_LANGUAGE: problem.language || "" } }
     );
     const duration = Date.now() - t0;

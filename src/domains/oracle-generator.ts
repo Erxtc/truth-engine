@@ -277,13 +277,21 @@ function injectProblemExamples(problem: string, oracleJs: string): string {
     return [
       `  var _p${i} = fn(${ex.args});`,
       `  var _e${i} = ${ex.expected};`,
-      `  if (JSON.stringify(_p${i}) !== JSON.stringify(_e${i})) { return { passed: false, reason: "${ex.label}-fail: expected " + ${escapedExpected} + " got " + JSON.stringify(_p${i}) }; }`,
+      `  if (!__teq(_p${i}, _e${i})) { return { passed: false, reason: "${ex.label}-fail: expected " + ${escapedExpected} + " got " + JSON.stringify(_p${i}) }; }`,
     ].join("\n");
   }).filter(Boolean).join("\n\n");
 
   if (!checks) return oracleJs;
 
   const authorityBlock = `  // === AUTHORITATIVE: extracted from problem statement ===
+  // Tolerance-aware deep equality: rounds floats to 6 decimal places before JSON comparison
+  function __teq(a, b) {
+    var _r = function(k, v) {
+      if (typeof v === 'number' && isFinite(v)) return parseFloat(v.toFixed(6));
+      return v;
+    };
+    return JSON.stringify(a, _r) === JSON.stringify(b, _r);
+  }
 ${checks}
   // === END authoritative ===`;
 

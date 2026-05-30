@@ -10,3 +10,4 @@ src/**/.capability-state.json
 src/**/.efficiency-state.json
 src/**/.llm-cache.json
 src/.oracle-cache.json.bak
+a.out

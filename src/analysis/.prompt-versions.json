@@ -451,6 +451,32 @@
         "calls": 2,
         "tokens": 1051,
         "solvedBy": "1-shot"
+      },
+      {
+        "timestamp": "2026-05-30T00:32:22.069Z",
+        "problem": "gaussian-elimination",
+        "systemPromptHash": "e407c881bde8fb19",
+        "systemPromptPreview": "[hash: e407c881bde8fb19]",
+        "userPrompt": "Write proposedSolution(A, b) that solves Ax=b using Gaussian elimination with partial pivoting. A is n×n (list of lists), b is list of length n. Return solution x as list.\n\nExample 1: proposedSolution([[2,1],[1,-1]], [5,1]) → [2, 1] because 2x+y=5, x-y=1\nExample 2: proposedSolution([[3,2],[1,4]], [7,9]) → [1, 2] because 3x+2y=7, x+4y=9\nExample 3: proposedSolution([[1,2,3],[2,3,1],[3,1,2]], [14,11,11]) → [1, 2, 3]",
+        "complexity": "hard",
+        "passed": true,
+        "calls": 2,
+        "tokens": 1167,
+        "solvedBy": "1-shot"
+      }
+    ],
+    "d3cbecb80f2733ce": [
+      {
+        "timestamp": "2026-05-30T00:32:39.439Z",
+        "problem": "word-count-cli",
+        "systemPromptHash": "335a7840dd2a32a0",
+        "systemPromptPreview": "[medium] word_count_cli: word-count-cli",
+        "userPrompt": "word-count-cli",
+        "complexity": "medium",
+        "passed": true,
+        "calls": 2,
+        "tokens": 0,
+        "solvedBy": "1-shot"
       }
     ]
   },
@@ -958,15 +984,32 @@
     "f19f79072729b1d0": {
       "hash": "f19f79072729b1d0",
       "firstSeen": "2026-05-30T00:31:43.421Z",
-      "lastSeen": "2026-05-30T00:32:14.407Z",
-      "totalUses": 2,
+      "lastSeen": "2026-05-30T00:32:22.069Z",
+      "totalUses": 3,
       "uniqueProblems": 1,
       "problemResults": {
         "gaussian-elimination": {
-          "passes": 2,
+          "passes": 3,
           "failures": 0,
-          "totalCalls": 4,
-          "totalTokens": 2203,
+          "totalCalls": 6,
+          "totalTokens": 3370,
+          "lastPassed": true
+        }
+      },
+      "passRate": 1
+    },
+    "d3cbecb80f2733ce": {
+      "hash": "d3cbecb80f2733ce",
+      "firstSeen": "2026-05-30T00:32:39.439Z",
+      "lastSeen": "2026-05-30T00:32:39.439Z",
+      "totalUses": 1,
+      "uniqueProblems": 1,
+      "problemResults": {
+        "word-count-cli": {
+          "passes": 1,
+          "failures": 0,
+          "totalCalls": 2,
+          "totalTokens": 0,
           "lastPassed": true
         }
       },
@@ -974,5 +1017,5 @@
     }
   },
   "currentHash": "e407c881bde8fb19",
-  "updatedAt": "2026-05-30T00:32:14.460Z"
+  "updatedAt": "2026-05-30T00:33:40.895Z"
 }

@@ -83,7 +83,7 @@ Return ONLY valid JSON:
 			userPrompt: prompt,
 			schema: baselineSchema,
 			temperature: 0.2,
-			_role: "baseline",
+			role: "baseline",
 		});
 		llmMs = Date.now() - t1;
 		code = result.response.code;

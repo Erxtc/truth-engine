@@ -82,7 +82,7 @@ Return ONLY valid JSON:
 `.trim();
 
   try {
-    const result = await queryReasoning({ userPrompt: prompt, schema: repairSchema, _role: 'repair' });
+    const result = await queryReasoning({ userPrompt: prompt, schema: repairSchema, role: 'repair' });
     return result.response.repairedProposal;
   } catch (err) {
     console.error("  [repair] LLM error:", (err as Error).message?.slice(0, 120));

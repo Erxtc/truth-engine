@@ -106,13 +106,29 @@ export async function queryLlmRaw(options: {
     return queryRaw({ ...options, modelConfig, _role: options.role });
 }
 
-// ── Backward-compat aliases (for gradual migration) ──────────────────────────
+// ── Backward-compat aliases ───────────────────────────────────────────────────
 
-export const queryReasoning = queryLlm;
-export const queryRawReasoning = queryLlmRaw;
-export function queryDeepseek<T extends v.GenericSchema>(options: any): Promise<{ response: v.InferOutput<T>; usage?: any }> {
-    return queryLlm({ ...options, model: "deepseek-cloud" });
+export async function queryReasoning<T extends v.GenericSchema>(options: {
+    userPrompt: string; systemPrompt?: string; schema: T; temperature?: number;
+    maxTokens?: number; role?: string; model?: string;
+    preprocess?: (raw: object) => object; nonce?: string;
+}): Promise<{ response: v.InferOutput<T>; usage?: any }> {
+    return queryLlm(options);
 }
-export function queryDeepseekRaw(options: any): Promise<string> {
+export async function queryRawReasoning(options: {
+    userPrompt: string; systemPrompt?: string; temperature?: number;
+    maxTokens?: number; role?: string; model?: string; nonce?: string;
+}): Promise<string> {
+    return queryLlmRaw(options);
+}
+export async function queryDeepseek<T extends v.GenericSchema>(options: {
+    userPrompt: string; systemPrompt?: string; schema: T; temperature?: number;
+    maxTokens?: number; preprocess?: (raw: object) => object;
+}): Promise<{ response: v.InferOutput<T>; usage?: any }> {
+    return queryLlm({ ...options as any, model: "deepseek-cloud" });
+}
+export async function queryDeepseekRaw(options: {
+    userPrompt: string; systemPrompt?: string; temperature?: number; maxTokens?: number;
+}): Promise<string> {
     return queryLlmRaw({ ...options, model: "deepseek-cloud" });
 }

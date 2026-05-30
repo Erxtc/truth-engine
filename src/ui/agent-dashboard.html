@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Dashboard — truth-engine</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --elevated: #1c2129;
+    --border: #30363d; --text: #e6edf3; --text2: #8b949e; --text3: #6e7681;
+    --accent: #58a6ff; --success: #3fb950; --warning: #d29922; --error: #f85149;
+    --purple: #a371f7; --radius: 8px; --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.5; }
+  .app { max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+  .header { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+  .header h1 { font-size: 20px; font-weight: 700; }
+  .header h1 span { color: var(--accent); }
+  .header-stats { display: flex; gap: 16px; font-size: 13px; color: var(--text2); flex-wrap:wrap; }
+  .header-stats strong { color: var(--text); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+  .dot.running { background: var(--success); animation: pulse 1.5s infinite; }
+  .dot.failed  { background: var(--error); }
+  .dot.done    { background: var(--text3); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  .active-bar {
+    background: linear-gradient(135deg, rgba(63,185,80,.1), rgba(63,185,80,.04));
+    border: 1px solid rgba(63,185,80,.25); border-radius: var(--radius);
+    padding: 12px 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px;
+  }
+  .active-bar .count { font-size: 28px; font-weight: 800; color: var(--success); min-width: 40px; }
+  .active-bar .info { flex: 1; }
+  .active-bar .info .title { font-size: 13px; font-weight: 600; }
+  .active-bar .info .detail { font-size: 11px; color: var(--text2); margin-top: 2px; }
+  .active-bar button {
+    padding: 8px 16px; border-radius: 6px; border: 1px solid var(--success);
+    background: rgba(63,185,80,.1); color: var(--success); cursor: pointer;
+    font-family: var(--font); font-size: 12px; font-weight: 600; transition: all .15s;
+  }
+  .active-bar button:hover { background: var(--success); color: #000; }
+
+  .grid { display: grid; grid-template-columns: 1fr 340px; gap: 20px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+  .agent-list { display: flex; flex-direction: column; gap: 10px; }
+  .section-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+  .section-title .count { font-size: 11px; color: var(--text3); font-weight: 400; }
+
+  .agent-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px 16px; transition: border-color .15s;
+  }
+  .agent-card:hover { border-color: var(--accent); }
+  .agent-card.running { border-left: 3px solid var(--success); background: rgba(63,185,80,.03); }
+  .agent-card.failed  { border-left: 3px solid var(--error); }
+  .agent-card.crashed { border-left: 3px solid var(--warning); }
+  .agent-card.completed { border-left: 3px solid var(--text3); }
+  .card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .card-name { font-weight: 600; font-size: 14px; }
+  .card-type {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    padding: 2px 8px; border-radius: 12px; letter-spacing: .4px;
+  }
+  .card-type.develop { background: rgba(88,166,255,.15); color: var(--accent); }
+  .card-type.pipeline { background: rgba(163,113,247,.15); color: var(--purple); }
+  .card-status {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    padding: 3px 10px; border-radius: 12px;
+  }
+  .card-status.running   { background: rgba(63,185,80,.15); color: var(--success); }
+  .card-status.completed { background: rgba(139,148,158,.15); color: var(--text2); }
+  .card-status.failed    { background: rgba(248,81,73,.15); color: var(--error); }
+  .card-status.crashed   { background: rgba(210,153,34,.15); color: var(--warning); }
+  .card-meta { font-size: 11px; color: var(--text2); margin-top: 4px; display: flex; gap: 12px; flex-wrap: wrap; }
+  .card-prompt { font-size: 11px; color: var(--text3); margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 500px; }
+  .card-actions { margin-top: 8px; display: flex; gap: 8px; align-items: center; }
+  .card-actions button {
+    font-size: 10px; padding: 4px 12px; border-radius: 4px; border: 1px solid var(--border);
+    background: var(--elevated); color: var(--text2); cursor: pointer; font-family: var(--font);
+    transition: all .15s;
+  }
+  .card-actions button:hover { border-color: var(--accent); color: var(--accent); }
+  .card-actions button.resume-btn { border-color: rgba(63,185,80,.4); color: var(--success); }
+  .card-actions button.resume-btn:hover { background: var(--success); color: #000; }
+  .session-id { font-size: 10px; color: var(--text3); }
+
+  .log-viewer { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; margin-top: 8px; display: none; }
+  .log-viewer.open { display: block; }
+  .log-viewer pre { font-size: 11px; font-family: 'SF Mono', monospace; max-height: 300px; overflow-y: auto; white-space: pre-wrap; color: var(--text2); background: var(--bg); padding: 10px; border-radius: 4px; }
+
+  .sidebar { display: flex; flex-direction: column; gap: 16px; }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+  .panel h3 { font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--text); }
+  .prompt-btn { display: block; width: 100%; text-align: left; padding: 8px 12px; background: var(--elevated); border: 1px solid var(--border); border-radius: 6px; color: var(--text2); font-size: 12px; cursor: pointer; font-family: var(--font); margin-bottom: 6px; transition: all .15s; }
+  .prompt-btn:hover { border-color: var(--accent); color: var(--text); }
+  .prompt-btn .desc { font-size: 10px; color: var(--text3); display: block; margin-top: 2px; }
+  .custom-input { width: 100%; padding: 8px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; font-family: var(--font); margin-bottom: 8px; resize: vertical; }
+  .spawn-btn { width: 100%; padding: 10px; background: var(--accent); color: #fff; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: var(--font); transition: opacity .15s; }
+  .spawn-btn:hover { opacity: .85; }
+  .spawn-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  .session-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 11px; border-bottom: 1px solid var(--border); }
+  .session-item:last-child { border-bottom: none; }
+  .session-item .s-icon { font-size: 12px; flex-shrink: 0; }
+  .session-item .s-info { flex: 1; min-width: 0; }
+  .session-item .s-name { font-weight: 500; color: var(--text); }
+  .session-item .s-meta { font-size: 10px; color: var(--text3); }
+  .session-item button { font-size: 9px; padding: 3px 10px; border-radius: 4px; background: var(--elevated); border: 1px solid var(--border); color: var(--text2); cursor: pointer; font-family: var(--font); white-space: nowrap; transition: all .15s; }
+  .session-item button:hover { border-color: var(--success); color: var(--success); }
+
+  .stat-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 12px; }
+  .stat-label { color: var(--text2); }
+  .stat-value { font-weight: 600; }
+  .stat-value.good { color: var(--success); }
+  .refresh-bar { font-size: 10px; color: var(--text3); text-align: center; margin-top: 8px; }
+  .empty { text-align: center; padding: 40px; color: var(--text3); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div><h1>truth-engine <span>agents</span></h1></div>
+    <div class="header-stats" id="headerStats"></div>
+  </div>
+
+  <div id="activeBar"></div>
+
+  <div class="grid">
+    <div>
+      <div class="section-title">All Agents <span class="count" id="agentCount"></span></div>
+      <div class="agent-list" id="agentList">
+        <div class="empty">Loading agents…</div>
+      </div>
+    </div>
+
+    <div class="sidebar">
+      <div class="panel">
+        <h3>Sessions</h3>
+        <div id="sessionList"><div class="empty" style="padding:20px">Loading…</div></div>
+      </div>
+
+      <div class="panel">
+        <h3>Spawn Agent</h3>
+        <div id="promptList"></div>
+        <textarea class="custom-input" id="customPrompt" placeholder="Or type a custom prompt…" rows="2"></textarea>
+        <button class="spawn-btn" id="spawnBtn" onclick="spawnAgent()">Spawn Agent</button>
+        <div id="spawnStatus" style="font-size:11px;margin-top:6px;color:var(--text2)"></div>
+      </div>
+
+      <div class="panel">
+        <h3>Stats</h3>
+        <div id="statsPanel"></div>
+        <div class="refresh-bar">Auto-refresh every 3s · <span id="lastRefresh">just now</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+let agents = [];
+let sessions = [];
+
+async function fetchJSON(url) { const r = await fetch(url); return r.json(); }
+
+function statusIcon(s) {
+  if (s === 'running') return '<span class="dot running"></span>';
+  if (s === 'failed' || s === 'crashed') return '<span class="dot failed"></span>';
+  return '<span class="dot done"></span>';
+}
+
+function renderActiveBar() {
+  const running = agents.filter(a => a.status === 'running');
+  const crashed = agents.filter(a => a.status === 'crashed');
+  const el = document.getElementById('activeBar');
+  if (running.length === 0 && crashed.length === 0) { el.innerHTML = ''; return; }
+  el.innerHTML = '<div class="active-bar">' +
+    '<div class="count">' + running.length + '</div>' +
+    '<div class="info">' +
+      '<div class="title">Agent' + (running.length !== 1 ? 's' : '') + ' Active</div>' +
+      '<div class="detail">' + running.length + ' running · ' + crashed.length + ' crashed' + (crashed.length > 0 ? ' — click Resume to recover' : '') + '</div>' +
+    '</div>' +
+    (crashed.length > 0 ? '<button onclick="resumeSession(1)">Resume Crashed</button>' : '') +
+    '</div>';
+}
+
+function renderPromptButtons(prompts) {
+  var el = document.getElementById('promptList');
+  var keys = Object.keys(prompts);
+  var html = '';
+  for (var i = 0; i < Math.min(keys.length, 6); i++) {
+    var k = keys[i];
+    html += '<button class="prompt-btn" onclick="spawnNamed(\'' + k + '\')"><strong>' + k + '</strong><span class="desc">' + esc(prompts[k].slice(0, 80)) + '…</span></button>';
+  }
+  if (keys.length > 6) html += '<div style="font-size:10px;color:var(--text3);text-align:center;margin-top:4px">+' + (keys.length-6) + ' more (type name in custom input)</div>';
+  el.innerHTML = html;
+}
+
+function renderSessions() {
+  var el = document.getElementById('sessionList');
+  if (sessions.length === 0) { el.innerHTML = '<div class="empty" style="padding:16px;font-size:12px">No sessions yet</div>'; return; }
+  var html = '';
+  for (var i = 0; i < Math.min(sessions.length, 8); i++) {
+    var s = sessions[i];
+    var icon = s.status === 'crashed' ? '💥' : s.status === 'completed' ? '✓' : '●';
+    var ago = Math.floor((Date.now()/1000 - s.startedAt) / 60);
+    var agoStr = ago < 1 ? 'just now' : ago < 60 ? ago + 'm ago' : Math.floor(ago/60) + 'h ago';
+    var canResume = s.status === 'crashed';
+    html += '<div class="session-item">' +
+      '<span class="s-icon">' + icon + '</span>' +
+      '<div class="s-info"><div class="s-name">' + esc(s.slug) + '</div><div class="s-meta">' + s.status + ' · ' + agoStr + '</div></div>' +
+      (canResume ? '<button class="resume-btn" onclick="resumeSession(' + (i+1) + ')">Resume</button>' : '') +
+      '</div>';
+  }
+  el.innerHTML = html;
+}
+
+function renderAgent(agent) {
+  var typeLabel = agent.type === 'develop' ? 'dev agent' : 'pipeline';
+  var meta = [];
+  if (agent.calls !== null) meta.push(agent.calls + ' calls');
+  if (agent.tokens !== null) meta.push((agent.tokens/1000).toFixed(1) + 'k tokens');
+  if (agent.durationSec !== null) meta.push(agent.durationSec + 's');
+  meta.push('started ' + timeAgo(agent.startedAt));
+
+  var html = '<div class="agent-card ' + agent.status + '" id="card-' + agent.id + '">' +
+    '<div class="card-top">' +
+      '<span class="card-name">' + statusIcon(agent.status) + ' ' + esc(agent.name) + '</span>' +
+      '<div style="display:flex;gap:6px;align-items:center">' +
+        '<span class="card-type ' + agent.type + '">' + typeLabel + '</span>' +
+        '<span class="card-status ' + agent.status + '">' + agent.status + '</span>' +
+      '</div>' +
+    '</div>';
+  if (agent.prompt) html += '<div class="card-prompt" title="' + esc(agent.prompt) + '">' + esc(agent.prompt) + '</div>';
+  html += '<div class="card-meta">' + meta.join(' · ') + '</div>' +
+    '<div class="card-actions">' +
+      '<button onclick="toggleLog(\'' + agent.id + '\', \'' + esc(agent.logFile) + '\')">View Log</button>';
+  if (agent.sessionId) html += '<span class="session-id">session: ' + agent.sessionId.slice(0,8) + '…</span>';
+  html += '</div>' +
+    '<div class="log-viewer" id="log-' + agent.id + '"><pre id="log-content-' + agent.id + '">Loading…</pre></div>' +
+    '</div>';
+  return html;
+}
+
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function timeAgo(iso) {
+  var diff = Date.now() - new Date(iso).getTime();
+  var sec = Math.floor(diff / 1000);
+  if (sec < 60) return sec + 's ago';
+  var min = Math.floor(sec / 60);
+  if (min < 60) return min + 'm ago';
+  var hr = Math.floor(min / 60);
+  return hr + 'h ' + (min % 60) + 'm ago';
+}
+
+async function loadAll() {
+  try {
+    var results = await Promise.all([
+      fetchJSON(API + '/api/agents'),
+      fetchJSON(API + '/api/sessions'),
+      fetchJSON(API + '/api/prompts'),
+    ]);
+    agents = results[0]; sessions = results[1];
+    render();
+    if (results[2] && Object.keys(results[2]).length > 0) renderPromptButtons(results[2]);
+  } catch(e) { console.error(e); }
+}
+
+function render() {
+  var el = document.getElementById('agentList');
+  if (agents.length === 0) {
+    el.innerHTML = '<div class="empty">No agents yet. Spawn one →</div>';
+  } else {
+    el.innerHTML = agents.map(renderAgent).join('');
+  }
+  document.getElementById('agentCount').textContent = '(' + agents.length + ')';
+
+  var running = agents.filter(function(a) { return a.status === 'running'; }).length;
+  var completed = agents.filter(function(a) { return a.status === 'completed'; }).length;
+  var failed = agents.filter(function(a) { return a.status === 'failed' || a.status === 'crashed'; }).length;
+  var develop = agents.filter(function(a) { return a.type === 'develop'; }).length;
+  var pipeline = agents.filter(function(a) { return a.type === 'pipeline'; }).length;
+
+  document.getElementById('headerStats').innerHTML =
+    '<span><span class="dot running"></span> <strong>' + running + '</strong> running</span>' +
+    '<span><span class="dot failed"></span> <strong>' + failed + '</strong> failed</span>' +
+    '<span><span class="dot done"></span> <strong>' + completed + '</strong> done</span>' +
+    '<span style="color:var(--text3)">| ' + develop + ' dev · ' + pipeline + ' pipeline</span>';
+
+  document.getElementById('statsPanel').innerHTML =
+    '<div class="stat-row"><span class="stat-label">Total agents</span><span class="stat-value">' + agents.length + '</span></div>' +
+    '<div class="stat-row"><span class="stat-label">Running</span><span class="stat-value good">' + running + '</span></div>' +
+    '<div class="stat-row"><span class="stat-label">Completed</span><span class="stat-value">' + completed + '</span></div>' +
+    '<div class="stat-row"><span class="stat-label">Failed/Crashed</span><span class="stat-value" style="color:var(--error)">' + failed + '</span></div>' +
+    '<div class="stat-row"><span class="stat-label">Dev agents</span><span class="stat-value">' + develop + '</span></div>' +
+    '<div class="stat-row"><span class="stat-label">Pipeline runs</span><span class="stat-value">' + pipeline + '</span></div>';
+
+  document.getElementById('lastRefresh').textContent = 'just now';
+  renderActiveBar();
+  renderSessions();
+}
+
+function spawnNamed(name) {
+  document.getElementById('customPrompt').value = name;
+  spawnAgent();
+}
+
+async function resumeSession(idx) {
+  try {
+    var r = await fetch(API + '/api/resume', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ index: idx }),
+    });
+    var data = await r.json();
+    var el = document.getElementById('spawnStatus');
+    if (data.ok) { el.textContent = '✓ ' + data.msg; setTimeout(loadAll, 2000); }
+    else { el.textContent = '✗ ' + data.msg; }
+  } catch(e) { document.getElementById('spawnStatus').textContent = '✗ ' + e.message; }
+}
+
+async function spawnAgent() {
+  var freeText = document.getElementById('customPrompt').value.trim();
+  if (!freeText) return;
+  var btn = document.getElementById('spawnBtn');
+  var status = document.getElementById('spawnStatus');
+  btn.disabled = true; btn.textContent = 'Spawning…'; status.textContent = '';
+  try {
+    var r = await fetch(API + '/api/spawn', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: freeText, bg: true }),
+    });
+    var data = await r.json();
+    if (data.ok) {
+      status.textContent = '✓ ' + data.msg;
+      document.getElementById('customPrompt').value = '';
+      setTimeout(loadAll, 2000);
+    } else { status.textContent = '✗ ' + data.msg; }
+  } catch(e) { status.textContent = '✗ ' + e.message; }
+  btn.disabled = false; btn.textContent = 'Spawn Agent';
+}
+
+async function toggleLog(id, logPath) {
+  var viewer = document.getElementById('log-' + id);
+  var content = document.getElementById('log-content-' + id);
+  if (viewer.classList.contains('open')) { viewer.classList.remove('open'); return; }
+  viewer.classList.add('open');
+  try {
+    var r = await fetch(API + '/api/agent-log?path=' + encodeURIComponent(logPath) + '&lines=80');
+    content.textContent = await r.text();
+  } catch(e) { content.textContent = 'Failed to load log'; }
+}
+
+loadAll();
+setInterval(loadAll, 3000);
+document.getElementById('customPrompt').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); spawnAgent(); }
+});
+</script>
+</body>
+</html>

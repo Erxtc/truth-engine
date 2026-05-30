@@ -53,6 +53,63 @@ BACKGROUND=false
 PRINT_MODE=false
 INPUT=""
 
+_save_session() {
+    local slug="$1" session_id="$2" status="$3" prompt="$4"
+    bun -e "
+import { appendFileSync } from 'fs'
+const record = JSON.stringify({
+  slug: '$slug',
+  sessionId: '$session_id',
+  status: '$status',
+  startedAt: Math.floor(Date.now()/1000),
+  prompt: '$prompt'.slice(0,200).replace(/\\\\/g,'').replace(/\"/g,'\\\\\"')
+})
+appendFileSync('$SESSION_INDEX', record + '\n')
+" 2>/dev/null
+}
+
+
+_update_session_status() {
+    local session_id="$1" status="$2"
+    bun -e "
+import { readFileSync, writeFileSync } from 'fs'
+try {
+  const lines = readFileSync('$SESSION_INDEX','utf-8').trim().split('\n').filter(Boolean)
+  const updated = lines.map(l => {
+    const s = JSON.parse(l)
+    if (s.sessionId === '$session_id') s.status = '$status'
+    return JSON.stringify(s)
+  }).join('\n') + '\n'
+  writeFileSync('$SESSION_INDEX', updated)
+} catch(e) {}
+" 2>/dev/null
+}
+
+_list_sessions() {
+    bun -e "
+import { readFileSync } from 'fs'
+try {
+  const lines = readFileSync('$SESSION_INDEX','utf-8').trim().split('\n').filter(Boolean)
+  if (lines.length === 0) { console.log('  (no sessions yet)'); process.exit(0) }
+  const sessions = lines.map(l => JSON.parse(l)).reverse().slice(0, 15)
+  const maxLen = Math.max(...sessions.map(s => s.slug.length))
+  console.log('')
+  console.log('── Recent sessions ──')
+  sessions.forEach((s, i) => {
+    const ago = Math.floor((Date.now()/1000 - s.startedAt) / 60)
+    const agoStr = ago < 1 ? 'just now' : ago < 60 ? ago + 'm ago' : Math.floor(ago/60) + 'h ago'
+    const icon = s.status === 'crashed' ? '💥' : s.status === 'completed' ? '✓' : '●'
+    const label = (s.slug + ':').padEnd(maxLen + 2)
+    const promptPreview = (s.prompt || '').slice(0, 70)
+    console.log('  [' + (i+1) + '] ' + icon + ' ' + label + s.status.padEnd(12) + agoStr.padEnd(10) + promptPreview)
+  })
+  console.log('')
+  console.log('  Resume:  bun develop --resume <N>')
+  console.log('  Last:    bun develop --resume last')
+} catch(e) { console.log('  (no sessions yet)') }
+" 2>/dev/null
+}
+
 # ── Parse flags ─────────────────────────────────────────────────────────────
 
 while [[ $# -gt 0 ]]; do
@@ -136,27 +193,48 @@ keys.forEach((k, i) => {
             exit 0
             ;;
         --resume|-r)
-            STATE_FILE="$LOGDIR/last-session-state.txt"
-            if [[ -f "$STATE_FILE" ]]; then
-                SESSION_ID=$(cat "$STATE_FILE" | head -1)
-                SESSION_STATE=$(cat "$LOGDIR/last-session-status.txt" 2>/dev/null || echo "unknown")
-                echo "→ Resuming session: $SESSION_ID"
-                echo "→ Previous status: $SESSION_STATE"
-                echo ""
-                mkdir -p "$LOGDIR"
-                # Interactive resume — stays alive after loading. No --print.
-                # Print sessions can't be resumed with --print (no deferred marker),
-                # but interactive resume loads the full conversation history.
-                exec claude \
-                    --dangerously-skip-permissions \
-                    --resume "$SESSION_ID" \
-                    "Let's pick up where we left off and continue working."
-            else
-                echo "No session to resume."
-                echo ""
-                echo "→ Trying claude --continue instead..."
-                exec claude --continue --dangerously-skip-permissions "Let's pick up where we left off."
+            SESSION_INDEX="$LOGDIR/sessions.jsonl"
+            # Check for optional argument: index number, "last", or slug
+            _pick="${2:-}"
+            if [[ -z "$_pick" || "$_pick" =~ ^-- ]]; then
+                # No argument — show session list
+                _list_sessions
+                exit 0
             fi
+            shift  # consume the argument
+            # Get session ID by index (1-based), slug match, or exact ID
+            SESSION_ID=$(bun -e "
+import { readFileSync } from 'fs'
+try {
+  const lines = readFileSync('$SESSION_INDEX','utf-8').trim().split('\n').filter(Boolean)
+  const sessions = lines.map(l => JSON.parse(l)).reverse()
+  const n = parseInt('$_pick', 10)
+  if (!isNaN(n) && n >= 1 && n <= sessions.length) {
+    console.log(sessions[n-1].sessionId)
+    process.exit(0)
+  }
+  const pick = '$_pick'.toLowerCase()
+  const match = sessions.find(s => s.slug.toLowerCase().includes(pick))
+  if (match) { console.log(match.sessionId); process.exit(0) }
+  const exact = sessions.find(s => s.sessionId === '$_pick')
+  if (exact) { console.log(exact.sessionId); process.exit(0) }
+  console.log('')
+} catch(e) { console.log('') }
+")
+            if [[ -z "$SESSION_ID" ]]; then
+                echo "→ No matching session for: $_pick"
+                echo ""
+                _list_sessions
+                exit 1
+            fi
+            mkdir -p "$LOGDIR"
+            echo "→ Resuming: $_pick"
+            echo "→ Session:  $SESSION_ID"
+            echo ""
+            exec claude \
+                --dangerously-skip-permissions \
+                --resume "$SESSION_ID" \
+                "Let's pick up where we left off and continue working."
             ;;
         --continue|-c)
             echo "→ Continuing most recent conversation..."
@@ -233,6 +311,12 @@ fi
 slugify() {
     echo "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g' | head -c 40
 }
+
+# ── Session index ───────────────────────────────────────────────────────────
+# Every run appends a JSON line so --resume can list and pick any session.
+
+SESSION_INDEX="$LOGDIR/sessions.jsonl"
+
 
 # ── Mini status (shown at startup and after bg launch) ──────────────────────
 
@@ -370,6 +454,7 @@ if $BACKGROUND; then
     SESSION_ID=$(bun -e "console.log(crypto.randomUUID())")
     echo "$SESSION_ID" > "$LOGDIR/last-session-state.txt"
     echo "CRASHED:$(date +%s)" > "$LOGDIR/last-session-status.txt"
+    _save_session "$SLUG" "$SESSION_ID" "crashed" "$PROMPT"
     echo "→ Background run: $LOGDIR/$LOGNAME"
     echo "→ Session: $SESSION_ID"
     echo "→ Task: $PROMPT"
@@ -393,6 +478,7 @@ if $BACKGROUND; then
             echo "" >> "$LOGDIR/$LOGNAME"
             echo "═══ DONE (${ELAPSED}s) ═══" >> "$LOGDIR/$LOGNAME"
             echo "COMPLETED:$(date +%s)" > "$LOGDIR/last-session-status.txt"
+            _update_session_status "$SESSION_ID" "completed"
         else
             echo "" >> "$LOGDIR/$LOGNAME"
             echo "═══ FAILED exit=$RC (${ELAPSED}s) ═══" >> "$LOGDIR/$LOGNAME"
@@ -425,6 +511,7 @@ elif $PRINT_MODE; then
     SESSION_ID=$(bun -e "console.log(crypto.randomUUID())")
     echo "$SESSION_ID" > "$LOGDIR/last-session-state.txt"
     echo "CRASHED:$(date +%s)" > "$LOGDIR/last-session-status.txt"
+    _save_session "$SLUG" "$SESSION_ID" "crashed" "$PROMPT"
     echo "→ Task: $PROMPT"
     echo "→ Session: $SESSION_ID"
     echo "→ Mode: one-shot (--print)"
@@ -449,6 +536,7 @@ elif $PRINT_MODE; then
     echo ""
     if [[ "$RC" -eq 0 ]]; then
         echo "COMPLETED:$(date +%s)" > "$LOGDIR/last-session-status.txt"
+        _update_session_status "$SESSION_ID" "completed"
         echo "╔══════════════════════════════════════════════════════════════╗"
         echo "║  ✓  DONE  (${ELAPSED}s)                                          ║"
         echo "╚══════════════════════════════════════════════════════════════╝"
@@ -467,6 +555,7 @@ else
     SESSION_ID=$(bun -e "console.log(crypto.randomUUID())")
     echo "$SESSION_ID" > "$LOGDIR/last-session-state.txt"
     echo "CRASHED:$(date +%s)" > "$LOGDIR/last-session-status.txt"
+    _save_session "$SLUG" "$SESSION_ID" "crashed" "$PROMPT"
     echo "→ Task: $PROMPT"
     echo "→ Session: $SESSION_ID"
     echo "→ Mode: interactive (session stays alive after task)"

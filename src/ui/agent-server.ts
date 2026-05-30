@@ -227,6 +227,18 @@ function spawnAgent(prompt: string, background: boolean = true): { ok: boolean; 
   }
 }
 
+// ── Session index ──────────────────────────────────────────────────────────
+
+function getSessions(): any[] {
+  const sessionFile = join(DEV_LOGDIR, "sessions.jsonl");
+  try {
+    const lines = readFileSync(sessionFile, "utf-8").trim().split("\n").filter(Boolean);
+    return lines.map(l => JSON.parse(l)).reverse();
+  } catch {
+    return [];
+  }
+}
+
 // ── Server ─────────────────────────────────────────────────────────────────
 
 function json(res: Response, data: any, status = 200) {
@@ -272,6 +284,28 @@ const server = Bun.serve({
       return json(null as any, result, result.ok ? 200 : 500);
     }
 
+    if (path === "/api/sessions") {
+      return json(null as any, getSessions());
+    }
+
+    if (path === "/api/resume" && req.method === "POST") {
+      let body: any;
+      try { body = await req.json(); } catch { body = {}; }
+      const idx = body.index || "1";
+      const script = join(SCRIPTS_DIR, "develop.sh");
+      try {
+        const proc = spawn("bash", [script, "--resume", String(idx)], {
+          cwd: ROOT,
+          detached: true,
+          stdio: "ignore",
+        });
+        proc.unref();
+        return json(null as any, { ok: true, msg: `Resuming session ${idx}...` });
+      } catch (err: any) {
+        return json(null as any, { ok: false, msg: err.message }, 500);
+      }
+    }
+
     if (path === "/api/agent-log") {
       const logPath = url.searchParams.get("path");
       if (!logPath) return json(null as any, { error: "Missing path" }, 400);
@@ -290,7 +324,12 @@ const server = Bun.serve({
 
     // ── Dashboard HTML ──────────────────────────────────────────────────
     if (path === "/" || path === "/index.html") {
-      return html(null as any, DASHBOARD_HTML);
+      try {
+        const html = readFileSync(join(import.meta.dir, "agent-dashboard.html"), "utf-8");
+        return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
+      } catch {
+        return new Response("Dashboard not found", { status: 500 });
+      }
     }
 
     return new Response("Not found", { status: 404 });
@@ -300,343 +339,3 @@ const server = Bun.serve({
 console.log(`\n  Agent Dashboard → http://localhost:${PORT}\n`);
 
 // ── Dashboard HTML (inline — no build step needed) ─────────────────────────
-
-const DASHBOARD_HTML = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Agent Dashboard — truth-engine</title>
-<style>
-  :root {
-    --bg: #0d1117; --surface: #161b22; --elevated: #1c2129;
-    --border: #30363d; --text: #e6edf3; --text2: #8b949e; --text3: #6e7681;
-    --accent: #58a6ff; --success: #3fb950; --warning: #d29922; --error: #f85149;
-    --purple: #a371f7; --radius: 8px; --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.5; }
-  .app { max-width: 1200px; margin: 0 auto; padding: 20px; }
-
-  /* Header */
-  .header { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
-  .header h1 { font-size: 20px; font-weight: 700; }
-  .header h1 span { color: var(--accent); }
-  .header-stats { display: flex; gap: 16px; font-size: 13px; color: var(--text2); }
-  .header-stats strong { color: var(--text); }
-  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
-  .dot.running { background: var(--success); animation: pulse 1.5s infinite; }
-  .dot.failed  { background: var(--error); }
-  .dot.done    { background: var(--text3); }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-
-  /* Grid */
-  .grid { display: grid; grid-template-columns: 1fr 340px; gap: 20px; }
-  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
-
-  /* Agent cards */
-  .agent-list { display: flex; flex-direction: column; gap: 10px; }
-  .agent-card {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 14px 16px;
-    transition: border-color .15s;
-  }
-  .agent-card:hover { border-color: var(--accent); }
-  .agent-card.running { border-left: 3px solid var(--success); }
-  .agent-card.failed  { border-left: 3px solid var(--error); }
-  .agent-card.crashed { border-left: 3px solid var(--warning); }
-  .agent-card.completed { border-left: 3px solid var(--text3); }
-  .card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-  .card-name { font-weight: 600; font-size: 14px; }
-  .card-type {
-    font-size: 10px; font-weight: 600; text-transform: uppercase;
-    padding: 2px 8px; border-radius: 12px; letter-spacing: .4px;
-  }
-  .card-type.develop { background: rgba(88,166,255,.15); color: var(--accent); }
-  .card-type.pipeline { background: rgba(163,113,247,.15); color: var(--purple); }
-  .card-status {
-    font-size: 10px; font-weight: 600; text-transform: uppercase;
-    padding: 3px 10px; border-radius: 12px;
-  }
-  .card-status.running   { background: rgba(63,185,80,.15); color: var(--success); }
-  .card-status.completed { background: rgba(139,148,158,.15); color: var(--text2); }
-  .card-status.failed    { background: rgba(248,81,73,.15); color: var(--error); }
-  .card-status.crashed   { background: rgba(210,153,34,.15); color: var(--warning); }
-  .card-meta { font-size: 11px; color: var(--text2); margin-top: 4px; display: flex; gap: 12px; flex-wrap: wrap; }
-  .card-prompt { font-size: 11px; color: var(--text3); margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 500px; }
-  .card-actions { margin-top: 8px; display: flex; gap: 8px; }
-  .card-actions button {
-    font-size: 10px; padding: 4px 12px; border-radius: 4px; border: 1px solid var(--border);
-    background: var(--elevated); color: var(--text2); cursor: pointer; font-family: var(--font);
-    transition: all .15s;
-  }
-  .card-actions button:hover { border-color: var(--accent); color: var(--accent); }
-
-  /* Log viewer modal */
-  .log-viewer {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 10px;
-    margin-top: 8px; display: none;
-  }
-  .log-viewer.open { display: block; }
-  .log-viewer pre {
-    font-size: 11px; font-family: 'SF Mono', 'Cascadia Code', monospace;
-    max-height: 300px; overflow-y: auto; white-space: pre-wrap;
-    color: var(--text2); background: var(--bg); padding: 10px; border-radius: 4px;
-  }
-
-  /* Sidebar */
-  .sidebar { display: flex; flex-direction: column; gap: 16px; }
-  .panel {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 16px;
-  }
-  .panel h3 { font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--text); }
-  .prompt-btn {
-    display: block; width: 100%; text-align: left; padding: 8px 12px;
-    background: var(--elevated); border: 1px solid var(--border);
-    border-radius: 6px; color: var(--text2); font-size: 12px; cursor: pointer;
-    font-family: var(--font); margin-bottom: 6px; transition: all .15s;
-  }
-  .prompt-btn:hover { border-color: var(--accent); color: var(--text); }
-  .prompt-btn .desc { font-size: 10px; color: var(--text3); display: block; margin-top: 2px; }
-  .custom-input {
-    width: 100%; padding: 8px 10px; background: var(--bg); border: 1px solid var(--border);
-    border-radius: 6px; color: var(--text); font-size: 12px; font-family: var(--font);
-    margin-bottom: 8px; resize: vertical;
-  }
-  .spawn-btn {
-    width: 100%; padding: 10px; background: var(--accent); color: #fff;
-    border: none; border-radius: 6px; font-size: 13px; font-weight: 600;
-    cursor: pointer; font-family: var(--font); transition: opacity .15s;
-  }
-  .spawn-btn:hover { opacity: .85; }
-  .spawn-btn:disabled { opacity: .4; cursor: not-allowed; }
-
-  /* Stats */
-  .stat-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 12px; }
-  .stat-label { color: var(--text2); }
-  .stat-value { font-weight: 600; }
-  .stat-value.good { color: var(--success); }
-  .refresh-bar { font-size: 10px; color: var(--text3); text-align: center; margin-top: 8px; }
-
-  .empty { text-align: center; padding: 40px; color: var(--text3); font-size: 13px; }
-</style>
-</head>
-<body>
-<div class="app">
-  <div class="header">
-    <div>
-      <h1>truth-engine <span>agents</span></h1>
-    </div>
-    <div class="header-stats" id="headerStats"></div>
-  </div>
-
-  <div class="grid">
-    <div class="agent-list" id="agentList">
-      <div class="empty">Loading agents…</div>
-    </div>
-
-    <div class="sidebar">
-      <div class="panel">
-        <h3>Spawn Agent</h3>
-        <div id="promptList"></div>
-        <textarea class="custom-input" id="customPrompt" placeholder="Or type a custom prompt…" rows="2"></textarea>
-        <button class="spawn-btn" id="spawnBtn" onclick="spawnAgent()">Spawn Agent</button>
-        <div id="spawnStatus" style="font-size:11px;margin-top:6px;color:var(--text2)"></div>
-      </div>
-
-      <div class="panel">
-        <h3>Stats</h3>
-        <div id="statsPanel"></div>
-        <div class="refresh-bar">Auto-refresh every 3s · <span id="lastRefresh">just now</span></div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<script>
-const API = '';
-let agents = [];
-
-async function fetchJSON(url) {
-  const r = await fetch(url);
-  return r.json();
-}
-
-function statusIcon(s) {
-  if (s === 'running') return '<span class="dot running"></span>';
-  if (s === 'failed' || s === 'crashed') return '<span class="dot failed"></span>';
-  return '<span class="dot done"></span>';
-}
-
-function renderPromptButtons(prompts) {
-  const el = document.getElementById('promptList');
-  const keys = Object.keys(prompts);
-  el.innerHTML = keys.map(k =>
-    \`<button class="prompt-btn" onclick="spawnNamed('\${k}')">
-      <strong>\${k}</strong>
-      <span class="desc">\${prompts[k].slice(0, 100)}…</span>
-    </button>\`
-  ).join('');
-}
-
-function renderAgent(agent) {
-  const typeLabel = agent.type === 'develop' ? 'dev agent' : 'pipeline';
-  const meta = [];
-  if (agent.calls !== null) meta.push(\`\${agent.calls} calls\`);
-  if (agent.tokens !== null) meta.push(\`\${(agent.tokens/1000).toFixed(1)}k tokens\`);
-  if (agent.durationSec !== null) meta.push(\`\${agent.durationSec}s\`);
-  const ago = timeAgo(agent.startedAt);
-  meta.push(\`started \${ago}\`);
-
-  return \`
-    <div class="agent-card \${agent.status}" id="card-\${agent.id}">
-      <div class="card-top">
-        <span class="card-name">\${statusIcon(agent.status)} \${esc(agent.name)}</span>
-        <div style="display:flex;gap:6px;align-items:center">
-          <span class="card-type \${agent.type}">\${typeLabel}</span>
-          <span class="card-status \${agent.status}">\${agent.status}</span>
-        </div>
-      </div>
-      \${agent.prompt ? \`<div class="card-prompt" title="\${esc(agent.prompt)}">\${esc(agent.prompt)}</div>\` : ''}
-      <div class="card-meta">\${meta.join(' · ')}</div>
-      <div class="card-actions">
-        <button onclick="toggleLog('\${agent.id}', '\${esc(agent.logFile)}')">View Log</button>
-        \${agent.sessionId ? \`<span style="font-size:10px;color:var(--text3);align-self:center">session: \${agent.sessionId.slice(0,8)}…</span>\` : ''}
-      </div>
-      <div class="log-viewer" id="log-\${agent.id}">
-        <pre id="log-content-\${agent.id}">Loading…</pre>
-      </div>
-    </div>
-  \`;
-}
-
-function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-
-function timeAgo(iso) {
-  const diff = Date.now() - new Date(iso).getTime();
-  const sec = Math.floor(diff / 1000);
-  if (sec < 60) return sec + 's ago';
-  const min = Math.floor(sec / 60);
-  if (min < 60) return min + 'm ago';
-  const hr = Math.floor(min / 60);
-  return hr + 'h ' + (min % 60) + 'm ago';
-}
-
-async function loadAgents() {
-  try {
-    agents = await fetchJSON(API + '/api/agents');
-    render();
-  } catch(e) { console.error(e); }
-}
-
-async function loadPrompts() {
-  try {
-    const prompts = await fetchJSON(API + '/api/prompts');
-    renderPromptButtons(prompts);
-  } catch(e) {}
-}
-
-function render() {
-  // Agent list
-  const el = document.getElementById('agentList');
-  if (agents.length === 0) {
-    el.innerHTML = '<div class="empty">No agents yet. Spawn one →</div>';
-  } else {
-    el.innerHTML = agents.map(renderAgent).join('');
-  }
-
-  // Stats
-  const running = agents.filter(a => a.status === 'running').length;
-  const completed = agents.filter(a => a.status === 'completed').length;
-  const failed = agents.filter(a => a.status === 'failed' || a.status === 'crashed').length;
-  const develop = agents.filter(a => a.type === 'develop').length;
-  const pipeline = agents.filter(a => a.type === 'pipeline').length;
-
-  document.getElementById('headerStats').innerHTML =
-    \`<span><span class="dot running"></span> <strong>\${running}</strong> running</span>
-     <span><span class="dot failed"></span> <strong>\${failed}</strong> failed</span>
-     <span><span class="dot done"></span> <strong>\${completed}</strong> done</span>
-     <span style="color:var(--text3)">| \${develop} dev · \${pipeline} pipeline</span>\`;
-
-  document.getElementById('statsPanel').innerHTML =
-    \`<div class="stat-row"><span class="stat-label">Total agents</span><span class="stat-value">\${agents.length}</span></div>
-     <div class="stat-row"><span class="stat-label">Running</span><span class="stat-value good">\${running}</span></div>
-     <div class="stat-row"><span class="stat-label">Completed</span><span class="stat-value">\${completed}</span></div>
-     <div class="stat-row"><span class="stat-label">Failed/Crashed</span><span class="stat-value" style="color:var(--error)">\${failed}</span></div>
-     <div class="stat-row"><span class="stat-label">Dev agents</span><span class="stat-value">\${develop}</span></div>
-     <div class="stat-row"><span class="stat-label">Pipeline runs</span><span class="stat-value">\${pipeline}</span></div>\`;
-
-  document.getElementById('lastRefresh').textContent = 'just now';
-}
-
-function spawnNamed(name) {
-  document.getElementById('customPrompt').value = name;
-  spawnAgent();
-}
-
-async function spawnAgent() {
-  const input = document.getElementById('customPrompt').value.trim();
-  const freeText = document.getElementById('customPrompt').value.trim();
-  const prompt = freeText || '';
-  if (!prompt) return;
-
-  const btn = document.getElementById('spawnBtn');
-  const status = document.getElementById('spawnStatus');
-  btn.disabled = true;
-  btn.textContent = 'Spawning…';
-  status.textContent = '';
-
-  try {
-    const r = await fetch(API + '/api/spawn', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ prompt, bg: true }),
-    });
-    const data = await r.json();
-    if (data.ok) {
-      status.textContent = '✓ ' + data.msg;
-      document.getElementById('customPrompt').value = '';
-      setTimeout(loadAgents, 2000);
-    } else {
-      status.textContent = '✗ ' + data.msg;
-    }
-  } catch(e) {
-    status.textContent = '✗ ' + e.message;
-  }
-  btn.disabled = false;
-  btn.textContent = 'Spawn Agent';
-}
-
-async function toggleLog(id, logPath) {
-  const viewer = document.getElementById('log-' + id);
-  const content = document.getElementById('log-content-' + id);
-  if (viewer.classList.contains('open')) {
-    viewer.classList.remove('open');
-    return;
-  }
-  viewer.classList.add('open');
-  try {
-    const r = await fetch(API + '/api/agent-log?path=' + encodeURIComponent(logPath) + '&lines=80');
-    content.textContent = await r.text();
-  } catch(e) {
-    content.textContent = 'Failed to load log';
-  }
-}
-
-// Init
-loadAgents();
-loadPrompts();
-setInterval(loadAgents, 3000);
-
-// Enter key in custom input spawns agent
-document.getElementById('customPrompt').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    spawnAgent();
-  }
-});
-</script>
-</body>
-</html>`;

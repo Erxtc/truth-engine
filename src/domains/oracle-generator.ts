@@ -90,7 +90,11 @@ export function buildOracleExamples(): string {
 export function sanitizeOracleJs(js: string): string {
 	// Strip bare bracket-notes: JS like `][text note]` where text starts with
 	// a letter (natural language, not array indices). NEVER valid JS outside strings.
+	// Pattern 1: bracket-note after array/object literal: `...]] [note];`
 	js = js.replace(/\]\s*\[([a-zA-Z_][^\]]*)\](?=\s*[;,\n)\}\]])/g, "]");
+	// Pattern 2: bare bracket-note as standalone expression: `[note text];`
+	// Only match when NOT preceded by = or , (which would indicate array literal)
+	js = js.replace(/(?<![=,\[])\s*\[([a-zA-Z_][^\[\]{}"']*)\](?=\s*[;,\n)\]])/g, "");
 	return js
 		.replace(/\bNaN\b/g, "null")
 		.replace(/\bundefined\b/g, "null");
@@ -196,11 +200,22 @@ function pythonToJs(expr: string): string {
   js = js.replace(/\bNone\b/g, "null");
   js = js.replace(/\bTrue\b/g, "true");
   js = js.replace(/\bFalse\b/g, "false");
-  // Convert Python tuples to JS arrays (iteratively for nesting)
+  // Convert Python tuples to JS arrays (iteratively for nesting).
+  // GUARD: do NOT convert parentheticals that look like natural language
+  // (start with a letter, contain spaces/commas and English words — these
+  // are commentary like "(unit square, interior point excluded)", not tuples).
   let prev = "";
   while (prev !== js) {
     prev = js;
-    js = js.replace(/\(([^()]*)\)/g, (_full: string, inner: string) => `[${inner}]`);
+    js = js.replace(/\(([^()]*)\)/g, (_full: string, inner: string) => {
+      // Natural language detection: starts with lowercase letter, contains spaces
+      // and common commentary words — keep as parenthetical (will be cleaned later).
+      if (/^[a-z]/.test(inner) && /\s/.test(inner) &&
+          /\b(?:unit|point|endpoint|interior|excluded|collinear|equivalent|order|optional|approximately|note|approx|roughly|rough|about|around|nearly|close to|i\.e\.|e\.g\.)\b/i.test(inner)) {
+        return `(${inner})`; // preserve as-is; sanitizeOracleJs or cleanExpected will strip
+      }
+      return `[${inner}]`;
+    });
   }
   return js;
 }
@@ -224,7 +239,13 @@ function injectProblemExamples(problem: string, oracleJs: string): string {
   );
   // If the pattern didn't match, return the original oracle — don't use lastIndexOf("}") fallback
   // which can corrupt JS syntax when oracles have nested braces.
-  return injected;
+  // Sanitize: strip any bracket-notes that pythonToJs may have introduced from
+  // parenthetical commentary (e.g., "(unit square, interior point excluded)" → "[...]").
+  const sanitized = sanitizeOracleJs(injected);
+  if (sanitized !== injected) {
+    console.log(`[auto-detect] Sanitized injected examples (stripped bracket-notes) ✓`);
+  }
+  return sanitized;
 }
 
 // ── Custom domain generation ──────────────────────────────────────────────

@@ -190,7 +190,7 @@
     ],
     "736bd7a11542cbbb": [
       {
-        "timestamp": "2026-05-30T00:52:43.915Z",
+        "timestamp": "2026-05-30T00:56:04.106Z",
         "problem": "heat-transfer",
         "systemPromptHash": "335a7840dd2a32a0",
         "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
@@ -198,13 +198,25 @@
         "complexity": "trivial",
         "passed": true,
         "calls": 3,
-        "tokens": 7853,
+        "tokens": 0,
+        "solvedBy": "repair"
+      },
+      {
+        "timestamp": "2026-05-30T00:58:08.238Z",
+        "problem": "heat-transfer",
+        "systemPromptHash": "335a7840dd2a32a0",
+        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "userPrompt": "Write proposedSolution(T_hot, T_cold, k, L, A) that calculates the steady-state heat transfer rate Q through a flat wall using Fourier's law: Q = k * A * (T_hot - T_cold) / L. All inputs are positive floats. Return Q as a float (no units required).\n\nExample 1: proposedSolution(100, 20, 0.04, 0.1, 2) → 64.0 (k=0.04 W/mK brick, L=0.1m, A=2m², ΔT=80K: Q = 0.04*2*80/0.1 = 64)\nExample 2: proposedSolution(200, 50, 401, 0.5, 0.01) → 1203.0 (k=401 copper, L=0.5m, A=0.01m², ΔT=150K)\nExample 3: proposedSolution(50, 10, 0.8, 2, 3) → 48.0",
+        "complexity": "trivial",
+        "passed": true,
+        "calls": 3,
+        "tokens": 2046,
         "solvedBy": "repair"
       }
     ],
     "ba8c145da6fcb0ce": [
       {
-        "timestamp": "2026-05-30T00:52:52.935Z",
+        "timestamp": "2026-05-30T00:56:12.745Z",
         "problem": "ph-calculation",
         "systemPromptHash": "335a7840dd2a32a0",
         "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
@@ -212,8 +224,34 @@
         "complexity": "trivial",
         "passed": true,
         "calls": 2,
-        "tokens": 1106,
+        "tokens": 0,
         "solvedBy": "1-shot"
+      },
+      {
+        "timestamp": "2026-05-30T00:58:16.802Z",
+        "problem": "ph-calculation",
+        "systemPromptHash": "335a7840dd2a32a0",
+        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "userPrompt": "Write proposedSolution(h_concentration) that calculates pH from hydrogen ion concentration: pH = -log10([H+]). h_concentration is a positive float (mol/L). Return pH rounded to 2 decimal places.\n\nExample 1: proposedSolution(0.0001) → 4.0 (pH of 1e-4 M HCl = 4.0)\nExample 2: proposedSolution(1.0e-7) → 7.0 (pure water)\nExample 3: proposedSolution(0.01) → 2.0",
+        "complexity": "trivial",
+        "passed": true,
+        "calls": 2,
+        "tokens": 6402,
+        "solvedBy": "1-shot"
+      }
+    ],
+    "cf81bcd9d1c98077": [
+      {
+        "timestamp": "2026-05-30T01:01:16.550Z",
+        "problem": "buffer-ph",
+        "systemPromptHash": "335a7840dd2a32a0",
+        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "userPrompt": "Write proposedSolution(pKa, c_acid, c_base) that calculates the pH of a buffer solution using the Henderson-Hasselbalch equation: pH = pKa + log10([A-]/[HA]). c_acid is [HA] concentration, c_base is [A-] concentration (both positive floats, mol/L). Return pH rounded to 2 decimal places.\n\nExample 1: proposedSolution(4.76, 0.1, 0.1) → 4.76 (acetic acid/acetate, equal conc)\nExample 2: proposedSolution(4.76, 0.1, 1.0) → 5.76 (10x more base → pH = 4.76 + 1.0 = 5.76)\nExample 3: proposedSolution(7.21, 0.05, 0.01) → 6.51",
+        "complexity": "trivial",
+        "passed": true,
+        "calls": 14,
+        "tokens": 6820,
+        "solvedBy": "supervisor-retry"
       }
     ]
   },
@@ -288,16 +326,16 @@
     },
     "736bd7a11542cbbb": {
       "hash": "736bd7a11542cbbb",
-      "firstSeen": "2026-05-30T00:52:43.915Z",
-      "lastSeen": "2026-05-30T00:52:43.915Z",
-      "totalUses": 1,
+      "firstSeen": "2026-05-30T00:56:04.106Z",
+      "lastSeen": "2026-05-30T00:58:08.238Z",
+      "totalUses": 2,
       "uniqueProblems": 1,
       "problemResults": {
         "heat-transfer": {
-          "passes": 1,
+          "passes": 2,
           "failures": 0,
-          "totalCalls": 3,
-          "totalTokens": 7853,
+          "totalCalls": 6,
+          "totalTokens": 2046,
           "lastPassed": true
         }
       },
@@ -305,16 +343,33 @@
     },
     "ba8c145da6fcb0ce": {
       "hash": "ba8c145da6fcb0ce",
-      "firstSeen": "2026-05-30T00:52:52.935Z",
-      "lastSeen": "2026-05-30T00:52:52.935Z",
-      "totalUses": 1,
+      "firstSeen": "2026-05-30T00:56:12.745Z",
+      "lastSeen": "2026-05-30T00:58:16.802Z",
+      "totalUses": 2,
       "uniqueProblems": 1,
       "problemResults": {
         "ph-calculation": {
+          "passes": 2,
+          "failures": 0,
+          "totalCalls": 4,
+          "totalTokens": 6402,
+          "lastPassed": true
+        }
+      },
+      "passRate": 1
+    },
+    "cf81bcd9d1c98077": {
+      "hash": "cf81bcd9d1c98077",
+      "firstSeen": "2026-05-30T01:01:16.550Z",
+      "lastSeen": "2026-05-30T01:01:16.550Z",
+      "totalUses": 1,
+      "uniqueProblems": 1,
+      "problemResults": {
+        "buffer-ph": {
           "passes": 1,
           "failures": 0,
-          "totalCalls": 2,
-          "totalTokens": 1106,
+          "totalCalls": 14,
+          "totalTokens": 6820,
           "lastPassed": true
         }
       },
@@ -324,5 +379,5 @@
   "currentHash": "335a7840dd2a32a0",
   "consistencyVerdicts": {},
   "trustedThreshold": 2,
-  "updatedAt": "2026-05-30T00:53:30.406Z"
+  "updatedAt": "2026-05-30T01:01:40.251Z"
 }

@@ -12,6 +12,18 @@
         "calls": 2,
         "tokens": 1152,
         "solvedBy": "1-shot"
+      },
+      {
+        "timestamp": "2026-05-30T00:49:00.212Z",
+        "problem": "gaussian-elimination",
+        "systemPromptHash": "e407c881bde8fb19",
+        "systemPromptPreview": "[hash: e407c881bde8fb19]",
+        "userPrompt": "Write proposedSolution(A, b) that solves Ax=b using Gaussian elimination with partial pivoting. A is n×n (list of lists), b is list of length n. Return solution x as list.\n\nExample 1: proposedSolution([[2,1],[1,-1]], [5,1]) → [2, 1] because 2x+y=5, x-y=1\nExample 2: proposedSolution([[3,2],[1,4]], [7,9]) → [1, 2] because 3x+2y=7, x+4y=9\nExample 3: proposedSolution([[1,2,3],[2,3,1],[3,1,2]], [14,11,11]) → [1, 2, 3]",
+        "complexity": "hard",
+        "passed": true,
+        "calls": 2,
+        "tokens": 1152,
+        "solvedBy": "1-shot"
       }
     ],
     "539dad36d32cd2b1": [
@@ -62,6 +74,18 @@
         "calls": 2,
         "tokens": 480,
         "solvedBy": "1-shot"
+      },
+      {
+        "timestamp": "2026-05-30T00:48:30.017Z",
+        "problem": "fibonacci",
+        "systemPromptHash": "335a7840dd2a32a0",
+        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "userPrompt": "Write proposedSolution(n) returning the nth Fibonacci number (fib(0)=0, fib(1)=1). n is a non-negative integer.",
+        "complexity": "trivial",
+        "passed": true,
+        "calls": 2,
+        "tokens": 494,
+        "solvedBy": "1-shot"
       }
     ],
     "9a800c4ec4b737d2": [
@@ -79,6 +103,30 @@
       },
       {
         "timestamp": "2026-05-30T00:46:16.154Z",
+        "problem": "sorting-js",
+        "systemPromptHash": "335a7840dd2a32a0",
+        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "userPrompt": "Write proposedSolution(arr) that sorts an array of integers in ascending order. Must be a valid JavaScript function. Do NOT use the built-in Array.prototype.sort().",
+        "complexity": "medium",
+        "passed": true,
+        "calls": 2,
+        "tokens": 1279,
+        "solvedBy": "1-shot"
+      },
+      {
+        "timestamp": "2026-05-30T00:48:32.078Z",
+        "problem": "sorting-js",
+        "systemPromptHash": "335a7840dd2a32a0",
+        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "userPrompt": "Write proposedSolution(arr) that sorts an array of integers in ascending order. Must be a valid JavaScript function. Do NOT use the built-in Array.prototype.sort().",
+        "complexity": "medium",
+        "passed": true,
+        "calls": 2,
+        "tokens": 1279,
+        "solvedBy": "1-shot"
+      },
+      {
+        "timestamp": "2026-05-30T00:50:32.172Z",
         "problem": "sorting-js",
         "systemPromptHash": "335a7840dd2a32a0",
         "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
@@ -114,6 +162,58 @@
         "calls": 2,
         "tokens": 964,
         "solvedBy": "1-shot"
+      },
+      {
+        "timestamp": "2026-05-30T00:48:34.145Z",
+        "problem": "linear-2x2",
+        "systemPromptHash": "335a7840dd2a32a0",
+        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "userPrompt": "Write proposedSolution(a1,b1,c1, a2,b2,c2) that solves the 2x2 linear system using Cramer's rule. Return a tuple (x, y). Assume unique solution (det ≠ 0).\n\nExample 1: proposedSolution(1, 1, 5, 1, -1, 1) → (3, 2) because x+y=5, x-y=1\nExample 2: proposedSolution(2, 3, 8, 1, 4, 9) → (1, 2) because 2x+3y=8, x+4y=9\nExample 3: proposedSolution(3, -2, 4, 2, 1, 5) → (2, 1) because 3x-2y=4, 2x+y=5",
+        "complexity": "simple",
+        "passed": true,
+        "calls": 2,
+        "tokens": 964,
+        "solvedBy": "1-shot"
+      },
+      {
+        "timestamp": "2026-05-30T00:50:40.003Z",
+        "problem": "linear-2x2",
+        "systemPromptHash": "335a7840dd2a32a0",
+        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "userPrompt": "Write proposedSolution(a1,b1,c1, a2,b2,c2) that solves the 2x2 linear system using Cramer's rule. Return a tuple (x, y). Assume unique solution (det ≠ 0).\n\nExample 1: proposedSolution(1, 1, 5, 1, -1, 1) → (3, 2) because x+y=5, x-y=1\nExample 2: proposedSolution(2, 3, 8, 1, 4, 9) → (1, 2) because 2x+3y=8, x+4y=9\nExample 3: proposedSolution(3, -2, 4, 2, 1, 5) → (2, 1) because 3x-2y=4, 2x+y=5",
+        "complexity": "simple",
+        "passed": true,
+        "calls": 2,
+        "tokens": 904,
+        "solvedBy": "1-shot"
+      }
+    ],
+    "736bd7a11542cbbb": [
+      {
+        "timestamp": "2026-05-30T00:52:43.915Z",
+        "problem": "heat-transfer",
+        "systemPromptHash": "335a7840dd2a32a0",
+        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "userPrompt": "Write proposedSolution(T_hot, T_cold, k, L, A) that calculates the steady-state heat transfer rate Q through a flat wall using Fourier's law: Q = k * A * (T_hot - T_cold) / L. All inputs are positive floats. Return Q as a float (no units required).\n\nExample 1: proposedSolution(100, 20, 0.04, 0.1, 2) → 64.0 (k=0.04 W/mK brick, L=0.1m, A=2m², ΔT=80K: Q = 0.04*2*80/0.1 = 64)\nExample 2: proposedSolution(200, 50, 401, 0.5, 0.01) → 1203.0 (k=401 copper, L=0.5m, A=0.01m², ΔT=150K)\nExample 3: proposedSolution(50, 10, 0.8, 2, 3) → 48.0",
+        "complexity": "trivial",
+        "passed": true,
+        "calls": 3,
+        "tokens": 7853,
+        "solvedBy": "repair"
+      }
+    ],
+    "ba8c145da6fcb0ce": [
+      {
+        "timestamp": "2026-05-30T00:52:52.935Z",
+        "problem": "ph-calculation",
+        "systemPromptHash": "335a7840dd2a32a0",
+        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "userPrompt": "Write proposedSolution(h_concentration) that calculates pH from hydrogen ion concentration: pH = -log10([H+]). h_concentration is a positive float (mol/L). Return pH rounded to 2 decimal places.\n\nExample 1: proposedSolution(0.0001) → 4.0 (pH of 1e-4 M HCl = 4.0)\nExample 2: proposedSolution(1.0e-7) → 7.0 (pure water)\nExample 3: proposedSolution(0.01) → 2.0",
+        "complexity": "trivial",
+        "passed": true,
+        "calls": 2,
+        "tokens": 1106,
+        "solvedBy": "1-shot"
       }
     ]
   },
@@ -121,15 +221,15 @@
     "f19f79072729b1d0": {
       "hash": "f19f79072729b1d0",
       "firstSeen": "2026-05-30T00:45:00.646Z",
-      "lastSeen": "2026-05-30T00:45:00.646Z",
-      "totalUses": 1,
+      "lastSeen": "2026-05-30T00:49:00.212Z",
+      "totalUses": 2,
       "uniqueProblems": 1,
       "problemResults": {
         "gaussian-elimination": {
-          "passes": 1,
+          "passes": 2,
           "failures": 0,
-          "totalCalls": 2,
-          "totalTokens": 1152,
+          "totalCalls": 4,
+          "totalTokens": 2304,
           "lastPassed": true
         }
       },
@@ -138,32 +238,32 @@
     "539dad36d32cd2b1": {
       "hash": "539dad36d32cd2b1",
       "firstSeen": "2026-05-30T00:45:36.864Z",
-      "lastSeen": "2026-05-30T00:48:02.225Z",
-      "totalUses": 4,
+      "lastSeen": "2026-05-30T00:48:30.017Z",
+      "totalUses": 5,
       "uniqueProblems": 1,
       "problemResults": {
         "fibonacci": {
-          "passes": 3,
+          "passes": 4,
           "failures": 1,
-          "totalCalls": 10,
-          "totalTokens": 1453,
+          "totalCalls": 12,
+          "totalTokens": 1947,
           "lastPassed": true
         }
       },
-      "passRate": 0.75
+      "passRate": 0.8
     },
     "9a800c4ec4b737d2": {
       "hash": "9a800c4ec4b737d2",
       "firstSeen": "2026-05-30T00:45:38.922Z",
-      "lastSeen": "2026-05-30T00:46:16.154Z",
-      "totalUses": 2,
+      "lastSeen": "2026-05-30T00:50:32.172Z",
+      "totalUses": 4,
       "uniqueProblems": 1,
       "problemResults": {
         "sorting-js": {
-          "passes": 2,
+          "passes": 4,
           "failures": 0,
-          "totalCalls": 4,
-          "totalTokens": 2558,
+          "totalCalls": 8,
+          "totalTokens": 5116,
           "lastPassed": true
         }
       },
@@ -172,23 +272,57 @@
     "2858256b820b3de0": {
       "hash": "2858256b820b3de0",
       "firstSeen": "2026-05-30T00:45:47.547Z",
-      "lastSeen": "2026-05-30T00:46:18.212Z",
-      "totalUses": 2,
+      "lastSeen": "2026-05-30T00:50:40.003Z",
+      "totalUses": 4,
       "uniqueProblems": 1,
       "problemResults": {
         "linear-2x2": {
-          "passes": 2,
+          "passes": 4,
           "failures": 0,
-          "totalCalls": 4,
-          "totalTokens": 2015,
+          "totalCalls": 8,
+          "totalTokens": 3883,
+          "lastPassed": true
+        }
+      },
+      "passRate": 1
+    },
+    "736bd7a11542cbbb": {
+      "hash": "736bd7a11542cbbb",
+      "firstSeen": "2026-05-30T00:52:43.915Z",
+      "lastSeen": "2026-05-30T00:52:43.915Z",
+      "totalUses": 1,
+      "uniqueProblems": 1,
+      "problemResults": {
+        "heat-transfer": {
+          "passes": 1,
+          "failures": 0,
+          "totalCalls": 3,
+          "totalTokens": 7853,
+          "lastPassed": true
+        }
+      },
+      "passRate": 1
+    },
+    "ba8c145da6fcb0ce": {
+      "hash": "ba8c145da6fcb0ce",
+      "firstSeen": "2026-05-30T00:52:52.935Z",
+      "lastSeen": "2026-05-30T00:52:52.935Z",
+      "totalUses": 1,
+      "uniqueProblems": 1,
+      "problemResults": {
+        "ph-calculation": {
+          "passes": 1,
+          "failures": 0,
+          "totalCalls": 2,
+          "totalTokens": 1106,
           "lastPassed": true
         }
       },
       "passRate": 1
     }
   },
-  "currentHash": "e407c881bde8fb19",
+  "currentHash": "335a7840dd2a32a0",
   "consistencyVerdicts": {},
   "trustedThreshold": 2,
-  "updatedAt": "2026-05-30T00:48:03.881Z"
+  "updatedAt": "2026-05-30T00:53:30.406Z"
 }

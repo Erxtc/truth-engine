@@ -34,14 +34,10 @@ import {
   generatePromptReport,
   generateCrossPromptComparison,
   formatCrossPromptReport,
-  generateWhatIfAnalysis,
-  formatWhatIfReport,
-  getImprovementTrends,
-  formatImprovementTrends,
   getTrustedProblems,
   getTrustedThreshold,
-  getCurrentPromptHash,
   getLastTrustedRun,
+  getCurrentPromptHash,
 } from "../analysis/prompt-version-tracker";
 import { getCacheStats } from "../llm/cache";
 
@@ -534,6 +530,372 @@ async function runBenchmark(problems: TestProblem[], label: string, skipTrusted:
     if (trends.length > 0) console.log(formatImprovementTrends(trends));
   } catch { /* non-critical */ }}
 
+// ── What-if analysis ─────────────────────────────────────────────────────────────
+// Answers: "If we'd used prompt version X instead of the current one, what would
+// the result be?" Shows regressions and improvements across prompt versions.
+
+interface WhatIfResult {
+  problem: string;
+  /** Current prompt's result (null if not run yet) */
+  currentResult: { passed: boolean; calls: number; tokens: number } | null;
+  /** Results from other prompt versions */
+  otherVersions: Array<{
+    hash: string;
+    passed: boolean;
+    calls: number;
+    lastUsed: string;
+    preview: string;
+  }>;
+  /** Which prompt version this regressed FROM (was passing, now failing) */
+  regressionFrom: string | null;
+  /** Was this problem never tested with the current prompt? */
+  untested: boolean;
+}
+
+/** Generate per-problem "what-if" comparison: what would happen with different
+ *  prompt versions? */
+function generateWhatIfAnalysis(problemNames?: string[]): WhatIfResult[] {
+  const state = (() => {
+    // Access prompt version state via the cross-prompt data
+    const cross = generateCrossPromptComparison(problemNames);
+    const currentHash = getCurrentPromptHash();
+    return { cross, currentHash };
+  })();
+
+  const results: WhatIfResult[] = [];
+  for (const cp of state.cross) {
+    const currentVersion = state.currentHash
+      ? cp.versions.find(v => v.hash === state.currentHash)
+      : undefined;
+    const otherVersions = cp.versions.filter(v => v.hash !== state.currentHash);
+
+    // Find regression: current FAILS but a previous version PASSED
+    let regressionFrom: string | null = null;
+    if (currentVersion && !currentVersion.passed) {
+      const prevPassing = otherVersions.find(v => v.passed);
+      if (prevPassing) regressionFrom = prevPassing.hash;
+    }
+
+    results.push({
+      problem: cp.problem,
+      currentResult: currentVersion
+        ? { passed: currentVersion.passed, calls: currentVersion.calls, tokens: currentVersion.tokens }
+        : null,
+      otherVersions,
+      regressionFrom,
+      untested: !currentVersion,
+    });
+  }
+
+  return results.sort((a, b) => {
+    // Regressions first, then untested, then improvements, then stable
+    const score = (r: WhatIfResult) => {
+      if (r.regressionFrom) return 0;
+      if (r.untested) return 1;
+      if (r.currentResult?.passed && r.otherVersions.some(v => !v.passed)) return 2;
+      return 3;
+    };
+    return score(a) - score(b) || a.problem.localeCompare(b.problem);
+  });
+}
+
+/** Format what-if analysis as human-readable text. */
+function formatWhatIfReport(results: WhatIfResult[]): string {
+  if (results.length === 0) return "No what-if data available.";
+
+  const lines: string[] = [];
+  lines.push("═".repeat(70));
+  lines.push("  WHAT-IF ANALYSIS — across prompt versions");
+  lines.push("═".repeat(70));
+
+  const regressions = results.filter(r => r.regressionFrom);
+  const improvements = results.filter(r => r.currentResult?.passed && r.otherVersions.some(v => !v.passed));
+  const stables = results.filter(r => !r.regressionFrom && !r.untested && !improvements.includes(r));
+  const untested = results.filter(r => r.untested);
+
+  lines.push(`\n  ${regressions.length} regressions  |  ${improvements.length} improvements  |  ${stables.length} stable  |  ${untested.length} untested`);
+
+  if (regressions.length > 0) {
+    lines.push(`\n  ⚠  REGRESSIONS — was passing, now failing with current prompt:`);
+    for (const r of regressions) {
+      const prev = r.otherVersions.find(v => v.hash === r.regressionFrom);
+      const prevTag = prev ? ` (was ${prev.passed ? 'PASS' : 'FAIL'} with ${prev.hash})` : '';
+      const currTag = r.currentResult ? ` ${r.currentResult.calls}c` : ' untested';
+      lines.push(`    ✗ ${r.problem.padEnd(30)} current: FAIL${currTag}${prevTag}`);
+    }
+  }
+
+  if (improvements.length > 0) {
+    lines.push(`\n  ✓ IMPROVEMENTS — now passing, previously failed:`);
+    for (const r of improvements) {
+      const prevs = r.otherVersions.filter(v => !v.passed);
+      const prevTag = prevs.length > 0 ? ` (was FAIL with ${prevs.map(v => v.hash).join(', ')})` : '';
+      lines.push(`    ✓ ${r.problem.padEnd(30)} now PASS${prevTag}`);
+    }
+  }
+
+  if (untested.length > 0 && untested.length < 5) {
+    lines.push(`\n  ? UNTESTED — no data with current prompt:`);
+    for (const r of untested) {
+      const best = r.otherVersions.sort((a, b) => (b.passed ? 1 : 0) - (a.passed ? 1 : 0))[0];
+      const bestTag = best ? ` (best: ${best.passed ? 'PASS' : 'FAIL'} with ${best.hash})` : '';
+      lines.push(`    ? ${r.problem.padEnd(30)}${bestTag}`);
+    }
+  }
+
+  lines.push("\n" + "═".repeat(70));
+  return lines.join("\n");
+}
+
+// ── Improvement trends ───────────────────────────────────────────────────────────
+
+interface ImprovementTrend {
+  problem: string;
+  runs: number;
+  /** Pass rate over time */
+  passRate: number;
+  /** Average calls over time */
+  avgCalls: number;
+  /** Direction: "improving" | "regressing" | "stable" | "flaky" */
+  direction: "improving" | "regressing" | "stable" | "flaky";
+  /** Recent performance (last 5 runs) */
+  recentRuns: Array<{ passed: boolean; calls: number }>;
+}
+
+/** Get per-problem improvement trends from cross-prompt data. */
+function getImprovementTrends(problemNames?: string[]): ImprovementTrend[] {
+  const cross = generateCrossPromptComparison(problemNames);
+  if (cross.length === 0) return [];
+
+  const trends: ImprovementTrend[] = [];
+
+  for (const cp of cross) {
+    const allRuns = cp.versions.sort((a, b) => b.lastUsed.localeCompare(a.lastUsed));
+    if (allRuns.length < 2) continue; // need at least 2 runs to detect trend
+
+    const recentRuns = allRuns.slice(0, Math.min(5, allRuns.length)).map(v => ({
+      passed: v.passed,
+      calls: v.calls,
+    }));
+
+    const totalPasses = allRuns.filter(v => v.passed).length;
+    const passRate = allRuns.length > 0 ? totalPasses / allRuns.length : 0;
+    const totalCalls = allRuns.reduce((s, v) => s + v.calls, 0);
+    const avgCalls = allRuns.length > 0 ? totalCalls / allRuns.length : 0;
+
+    // Determine direction: compare first half vs second half
+    const mid = Math.ceil(allRuns.length / 2);
+    const firstHalf = allRuns.slice(mid);
+    const secondHalf = allRuns.slice(0, mid);
+    const firstPassRate = firstHalf.filter(v => v.passed).length / (firstHalf.length || 1);
+    const secondPassRate = secondHalf.filter(v => v.passed).length / (secondHalf.length || 1);
+
+    let direction: ImprovementTrend["direction"];
+    if (firstPassRate === secondPassRate) {
+      direction = "stable";
+    } else if (secondPassRate > firstPassRate) {
+      direction = "improving";
+    } else {
+      // Check if results are mixed (pass and fail) — could be flaky
+      const hasBoth = allRuns.some(v => v.passed) && allRuns.some(v => !v.passed);
+      direction = hasBoth ? "flaky" : "regressing";
+    }
+
+    trends.push({
+      problem: cp.problem,
+      runs: allRuns.length,
+      passRate,
+      avgCalls,
+      direction,
+      recentRuns,
+    });
+  }
+
+  return trends.sort((a, b) => {
+    const priority: Record<string, number> = { regressing: 0, flaky: 1, improving: 2, stable: 3 };
+    return (priority[a.direction] ?? 3) - (priority[b.direction] ?? 3);
+  });
+}
+
+/** Format improvement trends as human-readable text. */
+function formatImprovementTrends(trends: ImprovementTrend[]): string {
+  if (trends.length === 0) return "No trend data available (need at least 2 runs per problem).";
+
+  const lines: string[] = [];
+  lines.push("═".repeat(70));
+  lines.push("  IMPROVEMENT TRENDS — per-problem direction over time");
+  lines.push("═".repeat(70));
+
+  const byDir = {
+    improving: trends.filter(t => t.direction === "improving"),
+    regressing: trends.filter(t => t.direction === "regressing"),
+    flaky: trends.filter(t => t.direction === "flaky"),
+    stable: trends.filter(t => t.direction === "stable"),
+  };
+
+  if (byDir.regressing.length > 0) {
+    lines.push(`\n  ⚠  REGRESSING (${byDir.regressing.length} problems) — getting worse:`);
+    for (const t of byDir.regressing) {
+      const recent = t.recentRuns.map(r => r.passed ? "✓" : "✗").join("");
+      lines.push(`    ${t.problem.padEnd(30)} ${(t.passRate * 100).toFixed(0)}% pass  ${t.runs}runs  avg ${t.avgCalls.toFixed(1)}c  [${recent}]`);
+    }
+  }
+
+  if (byDir.flaky.length > 0) {
+    lines.push(`\n  ⚡ FLAKY (${byDir.flaky.length} problems) — inconsistent:`);
+    for (const t of byDir.flaky) {
+      const recent = t.recentRuns.map(r => r.passed ? "✓" : "✗").join("");
+      lines.push(`    ${t.problem.padEnd(30)} ${(t.passRate * 100).toFixed(0)}% pass  ${t.runs}runs  avg ${t.avgCalls.toFixed(1)}c  [${recent}]`);
+    }
+  }
+
+  if (byDir.improving.length > 0) {
+    lines.push(`\n  ✓ IMPROVING (${byDir.improving.length} problems):`);
+    for (const t of byDir.improving) {
+      const recent = t.recentRuns.map(r => r.passed ? "✓" : "✗").join("");
+      lines.push(`    ${t.problem.padEnd(30)} ${(t.passRate * 100).toFixed(0)}% pass  ${t.runs}runs  avg ${t.avgCalls.toFixed(1)}c  [${recent}]`);
+    }
+  }
+
+  if (byDir.stable.length > 0 && byDir.stable.length < 10) {
+    lines.push(`\n  → STABLE (${byDir.stable.length} problems):`);
+    for (const t of byDir.stable) {
+      lines.push(`    ${t.problem.padEnd(30)} ${(t.passRate * 100).toFixed(0)}% pass  ${t.runs}runs`);
+    }
+  }
+
+  lines.push("\n" + "═".repeat(70));
+  return lines.join("\n");
+}
+
+// ── Strategy evaluation ───────────────────────────────────────────────────────
+
+interface StrategyResult {
+  strategy: string;
+  problem: string;
+  passed: boolean;
+  calls: number;
+  tokens: number;
+  durationMs: number;
+  solvedBy: string;
+}
+
+async function runStrategyEvaluation(problems: TestProblem[]): Promise<void> {
+  const promptsPath = resolve(ROOT, "prompts.json");
+  let strategyCatalog: Record<string, string>;
+  try {
+    strategyCatalog = JSON.parse(readFileSync(promptsPath, "utf-8"));
+  } catch {
+    console.log("  Cannot load prompts.json — skipping strategy evaluation.");
+    return;
+  }
+
+  const strategies = Object.entries(strategyCatalog);
+  if (strategies.length === 0) return;
+
+  console.log(`\n═══════════════════════════════════════════════════════════════`);
+  console.log(`  STRATEGY EVALUATION — ${problems.length} problem(s) × ${strategies.length} strategies`);
+  console.log(`  Testing which prompt strategy works best for each problem`);
+  console.log(`═══════════════════════════════════════════════════════════════\n`);
+
+  const results: StrategyResult[] = [];
+  const startTime = Date.now();
+
+  for (let i = 0; i < problems.length; i++) {
+    const p = problems[i]!;
+    for (let j = 0; j < strategies.length; j++) {
+      const [stratName, stratPrompt] = strategies[j]!;
+      const progress = `[${i + 1}/${problems.length}][${j + 1}/${strategies.length}]`;
+      process.stdout.write(`${progress} ${p.name} × ${stratName}… `);
+
+      try {
+        // Run pipeline with strategy injected as SYSTEM_PROMPT_STRATEGY
+        const t0 = Date.now();
+        const domain = p.domain || "auto";
+        const projectTestsJson = p.projectTests ? JSON.stringify(p.projectTests) : "";
+        const descEscaped = p.description.replace(/[\\"$`!]/g, '\\$&').replace(/\n/g, ' ');
+        const output = execSync(
+          `SYSTEM_PROMPT_STRATEGY_NAME="${stratName}" SYSTEM_PROMPT_STRATEGY="${stratPrompt.replace(/"/g, '\\"')}" PROBLEM_COMPLEXITY=${p.complexity} DOMAIN=${domain} PROBLEM_DESC="${descEscaped}" NO_UI=1 bun run ${ROOT}/src/main.ts`,
+          { cwd: ROOT, timeout: 300_000, encoding: "utf-8", env: { ...process.env, DOMAIN: domain, PROBLEM_DESC: p.description, PROBLEM_COMPLEXITY: p.complexity, NO_UI: "1", PROJECT_TESTS: projectTestsJson, PROBLEM_LANGUAGE: p.language || "", SYSTEM_PROMPT_STRATEGY: stratPrompt, SYSTEM_PROMPT_STRATEGY_NAME: stratName } }
+        );
+        const duration = Date.now() - t0;
+
+        let passed = false;
+        let calls = 0;
+        let solvedBy = "unknown";
+        const resultLine = output.split("\n").find(l => l.includes('"result"'));
+        if (resultLine) {
+          try {
+            const parsed = JSON.parse(resultLine.trim());
+            passed = parsed.result?.solved === true;
+            calls = parsed.result?.totalCalls ?? 0;
+            solvedBy = parsed.result?.solvedBy ?? "unknown";
+          } catch { /* fall through */ }
+        }
+
+        const log = lastLogPath();
+        const tokens = log ? totalTokens(log) : 0;
+
+        const icon = passed ? "PASS" : "FAIL";
+        console.log(`${icon} (${calls}c ${formatMs(duration)})`);
+        results.push({ strategy: stratName, problem: p.name, passed, calls, tokens, durationMs: duration, solvedBy });
+      } catch (err: any) {
+        console.log(`ERROR (${err?.message?.slice(0, 60) || "unknown"})`);
+        results.push({ strategy: stratName, problem: p.name, passed: false, calls: 0, tokens: 0, durationMs: 0, solvedBy: "crash" });
+      }
+    }
+  }
+
+  // ── Strategy matrix output ─────────────────────────────────────────────
+  console.log(`\n═══════════════════════════════════════════════════════════════`);
+  console.log(`  STRATEGY MATRIX — problem × strategy → pass/fail`);
+  console.log(`═══════════════════════════════════════════════════════════════\n`);
+
+  // Per-strategy summary
+  const stratSummary = new Map<string, { passes: number; fails: number; totalCalls: number }>();
+  for (const r of results) {
+    const s = stratSummary.get(r.strategy) || { passes: 0, fails: 0, totalCalls: 0 };
+    if (r.passed) s.passes++; else s.fails++;
+    s.totalCalls += r.calls;
+    stratSummary.set(r.strategy, s);
+  }
+
+  console.log(`  Strategy effectiveness (sorted best→worst):`);
+  const ranked = [...stratSummary.entries()]
+    .sort(([, a], [, b]) => b.passes - a.passes || a.totalCalls - b.totalCalls);
+  for (const [name, s] of ranked) {
+    // Pass rate = passes / (passes + failures)
+    const rate = s.passes + s.fails > 0 ? (s.passes / (s.passes + s.fails) * 100).toFixed(0) : "--";
+    console.log(`    ${rate}% pass  ${name.padEnd(20)} ${s.passes}P/${s.fails}F  avg ${(s.totalCalls / (s.passes + s.fails || 1)).toFixed(1)}c`);
+  }
+
+  // Per-problem matrix
+  console.log(`\n  Problem × Strategy matrix (✓=pass, ✗=fail, -=not run):`);
+  // Header row
+  const stratNames = strategies.map(([n]) => n);
+  const maxProbLen = Math.max(...problems.map(p => p.name.length), 8);
+  let header = "  " + "".padEnd(maxProbLen) + " │";
+  for (const sn of stratNames) {
+    header += ` ${sn.slice(0, 8).padEnd(9)}│`;
+  }
+  console.log(header);
+  console.log("  " + "─".repeat(maxProbLen) + "─┼" + "─".repeat(stratNames.length * 10) + "┤");
+
+  for (const p of problems) {
+    let row = "  " + p.name.padEnd(maxProbLen) + " │";
+    for (const sn of stratNames) {
+      const r = results.find(x => x.problem === p.name && x.strategy === sn);
+      const cell = r ? (r.passed ? "✓" : "✗") + ` ${r.calls}c` : "  -";
+      row += ` ${cell.padEnd(9)}│`;
+    }
+    console.log(row);
+  }
+
+  const elapsed = Date.now() - startTime;
+  console.log(`\n  Total time: ${formatMs(elapsed)}`);
+  console.log(`═══════════════════════════════════════════════════════════════\n`);
+}
+
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 async function main() {
@@ -597,7 +959,9 @@ async function main() {
     return;
   }
 
-  if (isConsistency) {
+  if (isEvaluateStrategies) {
+    await runStrategyEvaluation(problems);
+  } else if (isConsistency) {
     const runCount = parseInt(process.env.CONSISTENCY_RUNS || "2", 10);
     await runConsistencyCheck(problems, Math.max(2, Math.min(runCount, 5)));
   } else {

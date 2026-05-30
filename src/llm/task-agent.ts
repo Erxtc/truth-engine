@@ -775,6 +775,7 @@ export async function runTaskAgent(
     complexity: cfg.complexity,
     supervisorHint: cfg.supervisorHint,
     previousAttemptSummary: cfg.previousAttemptSummary,
+    oraclePreloaded: !!cfg.oracleContent,
   });
   const systemPromptHash: string = createHash("sha256").update(systemPrompt).digest("hex").slice(0, 16);
 

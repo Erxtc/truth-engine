@@ -616,5 +616,68 @@ export function formatConsistencyReport(consistency: ProblemConsistency[]): stri
   return lines.join("\n");
 }
 
+// ── Trusted problems (smart cache defaults) ──────────────────────────────────────
+
+/** A problem is "trusted" when it has passed consistently ≥3 times with the
+ *  current prompt hash. Trusted problems can be skipped in benchmark runs
+ *  (--force overrides). This saves significant LLM cost on stable problems. */
+export function isTrusted(problemName: string): boolean {
+  const state = store.load();
+  const phash = state.currentHash;
+  if (!phash) return false;
+
+  const runs = state.runs[phash];
+  if (!runs) return false;
+
+  const problemRuns = runs.filter(r => r.problem === problemName);
+  if (problemRuns.length < 3) return false;
+
+  return problemRuns.every(r => r.passed);
+}
+
+/** Get all problem names that are currently trusted (consistently passing ≥3x
+ *  with the current prompt hash). These can be safely skipped with --force.
+ *  @param currentHashOverride — optional explicit hash; uses state.currentHash if omitted */
+export function getTrustedProblems(currentHashOverride?: string | null): string[] {
+  const state = store.load();
+  const phash = currentHashOverride ?? state.currentHash;
+  if (!phash) return [];
+
+  const runs = state.runs[phash];
+  if (!runs) return [];
+
+  const byProblem = new Map<string, boolean>();
+  for (const run of runs) {
+    if (!byProblem.has(run.problem)) {
+      byProblem.set(run.problem, true);
+    }
+    if (!run.passed) {
+      byProblem.set(run.problem, false);
+    }
+  }
+
+  return [...byProblem.entries()]
+    .filter(([, allPassed]) => allPassed)
+    .map(([name]) => name)
+    .filter(name => {
+      const problemRuns = (state.runs[phash] ?? []).filter(r => r.problem === name);
+      return problemRuns.length >= 3;
+    });
+}
+
+// ── Cache invalidation ───────────────────────────────────────────────────────────
+
+/** Clear all prompt run data. Useful for fresh starts or after major prompt changes. */
+export function clearPromptCache(): void {
+  const state = store.load();
+  // Reset all fields
+  Object.keys(state.runs).forEach(k => delete state.runs[k]);
+  Object.keys(state.summaries).forEach(k => delete state.summaries[k]);
+  state.currentHash = null;
+  state.updatedAt = new Date().toISOString();
+  store.markDirty();
+  store.save();
+}
+
 // Auto-save on exit
 process.on("exit", () => { store.save(); });

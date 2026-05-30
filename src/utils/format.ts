@@ -22,14 +22,3 @@ export function formatCost(cents: number): string {
   if (cents < 100) return `$${cents.toFixed(2)}`;
   return `$${cents.toFixed(2)}`;
 }
-
-/** Compute cost in USD from token usage and model pricing.
- *  Returns 0 if pricing is null (free model). */
-export function computeCost(
-  usage: { prompt_tokens: number; completion_tokens: number },
-  pricing: { inputPerMTok: number; outputPerMTok: number } | null
-): number {
-  if (!pricing) return 0;
-  return (usage.prompt_tokens / 1_000_000) * pricing.inputPerMTok +
-         (usage.completion_tokens / 1_000_000) * pricing.outputPerMTok;
-}

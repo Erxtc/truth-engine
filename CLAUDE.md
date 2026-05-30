@@ -10,7 +10,31 @@
 
 **Core bet:** `tools + execution feedback + oracle verification > single LLM call`
 
-**⚠️ File safety:** Other agents are working here simultaneously. Before deleting ANY file, check: is it referenced by scripts, package.json, prompts.json, or other agents? When in doubt, don't delete — rename or comment out instead. Untracked files may be another agent's active work. Break nothing you don't understand.
+```
+╔══════════════════════════════════════════════════════════════════╗
+║  🛑  CRITICAL: OTHER AGENTS ARE WORKING HERE RIGHT NOW          ║
+║                                                                  ║
+║  DO NOT DELETE any of these — they are NOT dead code:            ║
+║    • scripts/           — all shell scripts, stream-filter.ts    ║
+║    • prompts.json       — prompt catalog for bun develop         ║
+║    • package.json       — all scripts entries are intentional    ║
+║    • CLAUDE.md          — this file, read by every agent         ║
+║    • logs/              — agent output and session state         ║
+║                                                                  ║
+║  BEFORE deleting ANY file:                                       ║
+║    1. Is it imported or referenced anywhere? Check with grep.    ║
+║    2. Could another agent depend on it? If unsure, leave it.     ║
+║    3. Is it in the list above? If yes, NEVER delete.             ║
+║                                                                  ║
+║  If you need to clean up:                                        ║
+║    • Rename or comment out instead of deleting                   ║
+║    • Only delete files inside src/ that are truly unreferenced   ║
+║    • NEVER delete anything in scripts/, root config files,       ║
+║      or any *.json/*.sh/*.ts file at the project root            ║
+║                                                                  ║
+║  Violating this breaks other agents' workflow. Don't do it.      ║
+╚══════════════════════════════════════════════════════════════════╝
+```
 
 When you're given a task, follow this cycle:
 1. `./scripts/status.sh` — see priority targets and failing tier

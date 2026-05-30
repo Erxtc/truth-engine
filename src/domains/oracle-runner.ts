@@ -10,8 +10,7 @@ import * as path from "path";
 import { normalizeEscapes, pythonRunnerSource, transpileToJs } from "../utils/general";
 import { validateAndFixPython, validateAndFixJs } from "../utils/code-validator";
 import { buildPythonOracleHarness } from "./oracle-hardener";
-import type { Proposal } from "../core/types";
-import type { Artifact } from "../db/schema";
+import type { Proposal, Artifact } from "../core/types";
 
 export function runCustomOracle(
 	oracleJs: string,

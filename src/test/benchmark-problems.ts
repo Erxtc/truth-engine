@@ -824,4 +824,89 @@ Example 5: proposedSolution(["5"]) → 5`,
     language: "python",
     complexity: "simple",
   },
+  // ── Polynomial arithmetic ──────────────────────────────────────────────────
+  {
+    name: "polynomial-long-division",
+    description: `Write proposedSolution(dividend, divisor) that performs polynomial long division. Both inputs are lists of integer coefficients from highest degree to constant term: [a_n, a_{n-1}, ..., a_0] represents a_n*x^n + a_{n-1}*x^{n-1} + ... + a_0.
+
+Return a tuple (quotient, remainder) where both quotient and remainder are lists of integer coefficients in the same format (highest degree to constant). Strip leading zeros from results — EXCEPT represent the zero polynomial as [0]. All coefficients are integers (exact division by the leading coefficient is guaranteed).
+
+Algorithm: While deg(remainder) >= deg(divisor):
+  1. Compute term_coeff = leading(remainder) / leading(divisor)
+  2. Compute term_deg = deg(remainder) - deg(divisor)
+  3. Build the subtraction polynomial: term_coeff * x^term_deg * divisor
+  4. Subtract from remainder (element-wise, aligned by degree)
+  5. Append term_coeff to the appropriate position in quotient
+  6. Strip leading zeros from remainder before the next iteration
+
+CRITICAL: Track degrees correctly. The degree of polynomial [c_0, c_1, ..., c_k] is k (number of coefficients minus 1). After stripping leading zeros, an empty list means the zero polynomial, degree = -1 (or represent as [0]).
+
+Example 1: proposedSolution([1, -3, 2], [1, -1]) → ([1, -2], [0])
+  (x² - 3x + 2) ÷ (x - 1) = x - 2 remainder 0
+
+Example 2: proposedSolution([1, -2, 0, -4], [1, -3]) → ([1, 1, 3], [5])
+  (x³ - 2x² + 0x - 4) ÷ (x - 3) = x² + x + 3 remainder 5
+
+Example 3: proposedSolution([2, -3, 4, -5], [1, 0, -1]) → ([2, -3], [6, -8])
+  (2x³ - 3x² + 4x - 5) ÷ (x² - 1) = 2x - 3 remainder 6x - 8
+
+Example 4: proposedSolution([3, 0, -5], [1, 0, -2]) → ([3], [0, 1])
+  (3x² - 5) ÷ (x² - 2) = 3 remainder x + 0 (coefficients: [0, 1])
+
+Example 5: proposedSolution([1, 0, 0, -8], [1, -2]) → ([1, 2, 4], [0])
+  (x³ - 8) ÷ (x - 2) = x² + 2x + 4 remainder 0
+
+Example 6: proposedSolution([5], [1, 1]) → ([0], [5])
+  (5) ÷ (x + 1) → dividend degree < divisor degree: quotient = [0], remainder = [5]
+
+Example 7: proposedSolution([1, 0, 0, 0, -16], [1, -2]) → ([1, 2, 4, 8], [0])
+  (x⁴ - 16) ÷ (x - 2) = x³ + 2x² + 4x + 8 remainder 0
+
+Example 8: proposedSolution([6, 5, 0, -7], [3, -2, -1]) → ([2, 3], [10, -4])
+  (6x³ + 5x² + 0x - 7) ÷ (3x² - 2x - 1) = 2x + 3 remainder 10x - 4`,
+    language: "python",
+    complexity: "hard",
+  },
+  // ── JSON Parser ──────────────────────────────────────────────────────────────
+  {
+    name: "json-parser",
+    description: `Write proposedSolution(json_string) that parses a JSON string and returns the corresponding Python object. Do NOT use json.loads(), eval(), exec(), or ast.literal_eval(). Implement the parser yourself from scratch.
+
+Your parser must handle ALL of these JSON elements correctly:
+- Objects: {}  — curly braces with comma-separated string:value pairs
+- Arrays: []  — square brackets with comma-separated values
+- Strings: "..."  — double-quoted, with escape sequences: \\", \\\\, \\/, \\b, \\f, \\n, \\r, \\t, \\uXXXX (4-hex-digit Unicode)
+- Numbers: integer (42, -17) and floating point (3.14, -0.5, 1.5e10, 2.5e-3, 1E+2)
+- Booleans: true, false
+- Null: null
+- Whitespace: spaces, tabs, newlines between tokens must be ignored
+- Nested structures: arrays inside objects, objects inside arrays, arbitrary depth
+
+For invalid JSON (malformed syntax, trailing commas, unclosed strings, etc.), raise a ValueError with a descriptive message.
+
+Your implementation must correctly parse these test cases:
+
+Example 1: proposedSolution('{}') → {}
+Example 2: proposedSolution('[]') → []
+Example 3: proposedSolution('{"a":1,"b":2}') → {"a":1,"b":2}
+Example 4: proposedSolution('[1,2,3]') → [1,2,3]
+Example 5: proposedSolution('true') → True
+Example 6: proposedSolution('false') → False
+Example 7: proposedSolution('null') → None
+Example 8: proposedSolution('"hello"') → "hello"
+Example 9: proposedSolution('42') → 42
+Example 10: proposedSolution('-17') → -17
+Example 11: proposedSolution('3.14159') → 3.14159
+Example 12: proposedSolution('1.5e10') → 15000000000.0
+Example 13: proposedSolution('2.5e-3') → 0.0025
+Example 14: proposedSolution('{"nested":{"key":[1,2,3]}}') → {"nested":{"key":[1,2,3]}}
+Example 15: proposedSolution('[{"a":1},{"b":2}]') → [{"a":1},{"b":2}]
+Example 16: proposedSolution('"hello\\nworld"') → "hello\nworld"
+Example 17: proposedSolution('"tab\\there"') → "tab\there"
+Example 18: proposedSolution('"quote\\"inside"') → 'quote"inside'
+Example 19: proposedSolution('[true,false,null,0]') → [True,False,None,0]
+Example 20: proposedSolution('{"a b":1,"c\\td":2}') → {"a b":1,"c\td":2}`,
+    language: "python",
+    complexity: "hard",
+  },
 ];

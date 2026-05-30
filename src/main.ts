@@ -27,6 +27,9 @@ import { getModelTier } from "./llm";
 import type { WorkingContext, Proposal, ExecutionResult, RunParams, ConfidenceLevel } from "./core/types";
 import type { SupervisorDecision } from "./agents/supervisor";
 import { HealthMonitor } from "./core/health-monitor";
+import { hashSystemPrompt, recordPromptRun, setCurrentPromptHash } from "./analysis/prompt-version-tracker";
+import { buildSystemPrompt } from "./llm/task-agent-prompt";
+import type { WorkflowConfig } from "./llm/task-agent";
 
 // Ensure domain executors are loaded
 import "./executors/domains/index";
@@ -281,8 +284,22 @@ async function main() {
   const outcome: RunOutcome = { solved: false, solvedBy: "pipeline", totalCalls: 0, domain: "", description: problem.slice(0, 120) };
   let finalSolutionCode = "";
   let oracleHash = "";
-  let systemPromptHash = "";
   function hash(s: string): string { return createHash("sha256").update(s).digest("hex").slice(0, 16); }
+
+  // ── Compute canonical system prompt hash (for prompt version tracking) ────
+  // This represents the "version" of the prompt that the current codebase produces.
+  // Even if individual pipeline stages (baseline, repair) build different prompts,
+  // this hash ties all results back to the current prompt code.
+  const defaultWf: WorkflowConfig = {
+    solutionFiles: ["solution.py"],
+    verifyCommand: "python3 verify.py",
+    outputDescription: "python function",
+    language: cfg.problemLanguage || "python",
+    testFirst: false,
+  };
+  const canonicalSystemPrompt = buildSystemPrompt(defaultWf, { complexity });
+  let systemPromptHash = hashSystemPrompt(canonicalSystemPrompt);
+  setCurrentPromptHash(systemPromptHash);
 
   let _outcomeRecorded = false;
   const _recordOutcome = () => {
@@ -608,6 +625,22 @@ async function main() {
   }
 
   } finally {
+    // ── Record prompt version run (cross-prompt tracking, auto-cache decisions) ──
+    if (systemPromptHash && outcome.domain) {
+      recordPromptRun({
+        timestamp: new Date().toISOString(),
+        problem: outcome.description.slice(0, 80) || problem.slice(0, 80),
+        systemPromptHash,
+        systemPromptPreview: `[${complexity}] ${outcome.domain}: ${problem.slice(0, 200)}`,
+        userPrompt: problem,
+        complexity,
+        passed: outcome.solved,
+        calls: totalCalls,
+        tokens: 0, // tokens are computed from log in benchmark layer
+        solvedBy: outcome.solvedBy,
+      });
+    }
+
     // ── Structured result for programmatic consumers (benchmark, agents) ──────
     const solutionHash = finalSolutionCode ? hash(finalSolutionCode) : "";
     console.log(`\n${JSON.stringify({ result: { solved: outcome.solved, solvedBy: outcome.solvedBy, totalCalls: outcome.totalCalls, domain: outcome.domain, description: outcome.description.slice(0, 200), modelTier, oracleHash, solutionHash, systemPromptHash } })}`);

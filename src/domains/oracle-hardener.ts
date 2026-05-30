@@ -142,6 +142,16 @@ export function hardenOracle(oracleJs: string): { ok: boolean; error?: string } 
 		{ name: "return-wrong-type", source: "def proposedSolution(*args):\n    return str(args)\n" },
 		// Near-miss: returns a value 1% off the first arg — catches loose floating-point tolerances
 		{ name: "return-near-miss", source: "def proposedSolution(*args):\n    x = args[0] if args else 0; return x * 1.01 if isinstance(x, (int, float)) else x\n" },
+		// Returns Infinity — catches oracles that don't validate finite results (NaN > 0.01 is false, but Infinity > 0.01 is true)
+		{ name: "return-infinity", source: "def proposedSolution(*args):\n    return float('inf')\n" },
+		// Returns a dict/object — catches oracles that assume list/tuple return but don't type-check
+		{ name: "return-dict", source: "def proposedSolution(*args):\n    return {\"fake\": \"result\"}\n" },
+		// Returns a tuple of zeros — catches oracles that only check "is it a tuple/list?" without checking element values
+		{ name: "return-zero-tuple", source: "def proposedSolution(*args):\n    return (0, 0)\n" },
+		// Returns just the first element of what should be a multi-element return — catches length-only checks
+		{ name: "return-truncated-list", source: "import copy\ndef proposedSolution(*args):\n    result = args[0] if args else [1]\n    if isinstance(result, list) and len(result) > 1:\n        return result[:1]\n    return [0]\n" },
+		// Returns a constant that could accidentally match one test case — catches single-test oracles
+		{ name: "return-constant-42", source: "def proposedSolution(*args):\n    return 42\n" },
 	];
 
 	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "truth-harden-"));

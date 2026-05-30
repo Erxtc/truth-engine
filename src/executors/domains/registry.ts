@@ -1,5 +1,4 @@
-import type { ConfidenceLevel, PipelineResult, Proposal, WorkingContext } from "../../core/types";
-import type { Artifact } from "../../db/schema";
+import type { ConfidenceLevel, PipelineResult, Proposal, WorkingContext, Artifact } from "../../core/types";
 
 export interface DomainSpec {
 	name: string;
@@ -34,10 +33,6 @@ export function registerDomain(spec: DomainSpec): void {
 
 export function getDomainSpec(domain: string): DomainSpec | undefined {
 	return registry.get(domain);
-}
-
-export function hasDomain(domain: string): boolean {
-	return registry.has(domain);
 }
 
 export function listDomains(): string[] {

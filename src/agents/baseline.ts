@@ -6,8 +6,7 @@
 import * as v from "valibot";
 import { queryReasoning } from "../llm";
 import type { DomainSpec } from "../executors/domains/registry";
-import type { Proposal, WorkingContext, ExecutionResult } from "../core/types";
-import type { Artifact } from "../db/schema";
+import type { Proposal, WorkingContext, ExecutionResult, Artifact } from "../core/types";
 import { validateAndFixPython } from "../utils/code-validator";
 import { normalizeEscapes } from "../utils/general";
 

@@ -5,16 +5,6 @@
 
 import { JsonFileStore } from "../utils/json-file-store";
 
-// ── Types ──────────────────────────────────────────────────────────────────────
-
-export type FailureClass =
-  | "parse_error"
-  | "syntax_error"
-  | "type_error"
-  | "wrong_output"
-  | "wrong_approach"
-  | "capability_gap";
-
 const STATE_PATH = import.meta.dir + "/.capability-state.json";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -31,7 +21,7 @@ export interface CapabilityRecord {
   /** Did the pipeline solve it? */
   solved: boolean;
   /** If unsolved, the failure classification */
-  failureClass?: FailureClass;
+  failureClass?: string;
   /** How many LLM calls did this problem consume */
   llmCallsUsed: number;
   /** Which agent solved it (1-shot, task-agent, repair, evolution) */

@@ -1,5 +1,4 @@
-import type { PipelineResult, Proposal, WorkingContext } from "../../core/types";
-import type { Artifact } from "../../db/schema";
+import type { PipelineResult, Proposal, WorkingContext, Artifact } from "../../core/types";
 import { runSortingPipeline } from "./sorting-pipeline";
 import { runProjectPipeline } from "./project-pipeline";
 import { verifyHtmlProject } from "./project-verify";
@@ -7,7 +6,7 @@ import { Sandbox, parseSandboxOutput } from "../sandbox/index";
 import { buildSortingHarness, buildCompressionHarness } from "../sandbox/harness-builder";
 import { transpileToJs, failPipeline } from "../../utils/general";
 import { registerDomain, type DomainSpec } from "./registry";
-export { getDomainSpec, hasDomain, listDomains, registerDomain, type DomainSpec } from "./registry";
+export { getDomainSpec, listDomains, registerDomain, type DomainSpec } from "./registry";
 
 type DomainRun = DomainSpec['run'];
 

@@ -4,7 +4,6 @@ import { jsonrepair } from 'jsonrepair';
 import { ThrottledSemaphore, valibotParse, stripThinkTags } from '../utils/general';
 import { quietMode } from '../utils/prompt-logger';
 import { logLlmStart, logLlmResult } from '../utils/prompt-logger';
-import { emit } from '../ui/events';
 import { cacheKey, cacheGet, cacheSet } from './cache';
 
 export interface LlamaModelConfig {
@@ -145,14 +144,6 @@ async function doLlmCall(
     const rawContent = data.choices?.[0]?.message?.content as string | undefined;
     if (!rawContent) throw new Error('No content in LLM response');
 
-    // Capture <think> reasoning for emit before stripping
-    const thinkMatch = rawContent.match(/<think>([\s\S]*?)<\/think>/i);
-    if (thinkMatch?.[1]) {
-        const thinking = thinkMatch[1].trim();
-        if (thinking) {
-            emit('llm:thinking', thinking.slice(0, 120) + (thinking.length > 120 ? '…' : ''), { detail: { thinking } });
-        }
-    }
     const cleaned = stripThinkTags(rawContent);
 
     const cost = config.pricing && data.usage

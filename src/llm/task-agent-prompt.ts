@@ -15,10 +15,13 @@ export interface SystemPromptOptions {
   supervisorHint?: string;
   /** Summary of what was tried in the previous attempt and why it failed */
   previousAttemptSummary?: string;
+  /** When true, oracle content is pre-loaded in the first user message — suppress read_file("oracle.js") instructions */
+  oraclePreloaded?: boolean;
 }
 
 export function buildSystemPrompt(wf: WorkflowConfig, options?: SystemPromptOptions): string {
   const complexity = options?.complexity;
+  const oraclePreloaded = options?.oraclePreloaded === true;
   const filesList = wf.solutionFiles.map(f => `  - ${f}`).join("\n");
   const isHard = complexity === "hard" || complexity === "very-hard";
   // Force web search for hard+ problems regardless of domain preset
@@ -30,11 +33,13 @@ export function buildSystemPrompt(wf: WorkflowConfig, options?: SystemPromptOpti
   // Verifier script (project/cli-project) vs oracle
   const isVerifier = wf.isVerifierScript === true;
   const verifierFile = isVerifier ? wf.verifyCommand.replace(/^node\s+/, "") : "oracle.js";
-  const verifierRun = isVerifier ? wf.verifyCommand : "python3 oracle.py solution.py";
+  const verifierRun = wf.verifyCommand || (isVerifier ? "node verify.js solution.py" : "python3 oracle.py solution.py");
   const verifierLabel = isVerifier ? "verifier" : "oracle";
   const verifierReadInstr = isVerifier
     ? `read_file("${verifierFile}") to understand how the verifier checks your solution`
-    : `read_file("oracle.js") to understand expected output format`;
+    : oraclePreloaded
+      ? `study the oracle test cases pre-loaded in the first user message (they are the specification — you do NOT need read_file("oracle.js"))`
+      : `read_file("oracle.js") to understand expected output format`;
 
   const workflow = useResearchPhases
     ? `WORKFLOW — 3 phases: research → implement → verify:
@@ -75,7 +80,7 @@ KEY PRINCIPLE: Verify each piece BEFORE composing. A wrong component poisons the
 5. When you have a complete document written: call finish()`
     : isHard
     ? `WORKFLOW (complex problem — research first, then code):
-1. RESEARCH THE ALGORITHM: Before writing code, make sure you understand the EXACT algorithm. If you don't know it cold (pseudocode, data structures, edge cases), use web_search() NOW. ${isVerifier ? `Read the verifier script with read_file("${verifierFile}") to understand how it checks your output.` : `Read the oracle with read_file("oracle.js") to see what test cases expect.`} Do NOT skip research — implementing the wrong algorithm wastes all your turns.
+1. RESEARCH THE ALGORITHM: Before writing code, make sure you understand the EXACT algorithm. If you don't know it cold (pseudocode, data structures, edge cases), use web_search() NOW. ${isVerifier ? `Read the verifier script with read_file("${verifierFile}") to understand how it checks your output.` : oraclePreloaded ? `Study the oracle test cases pre-loaded in the first user message — they are the exact tests your code must pass.` : `Read the oracle with read_file("oracle.js") to see what test cases expect.`} Do NOT skip research — implementing the wrong algorithm wastes all your turns.
 2. PLAN: Write a short plan (2-4 sentences). What specific algorithm? What sub-components? What are the key data structures?
 3. COMPONENT TESTING: For compound algorithms (AES, RSA, AVL, BFS, Dijkstra, etc.), build and test ONE sub-component at a time. Write a small test harness for each component BEFORE integrating. Verify the component against known test vectors if available.
 4. Write your COMPLETE solution to: ${wf.solutionFiles.join(", ")}
@@ -137,14 +142,16 @@ KEY PRINCIPLE: Verify each piece BEFORE composing. A wrong component poisons the
 - TRUST YOUR MATH: if you compute an answer using a stated formula and it disagrees with an example, your computation is more likely correct than the example. Examples can contain errors — formulas don't lie. NEVER change a correct formula to match a wrong example. Instead, note the discrepancy in your finish() summary.`
     : isHard
     ? `\nRULES:
-- READ THE ${verifierLabel.toUpperCase()} FIRST: Before coding, read ${verifierFile} with read_file("${verifierFile}"). ${isVerifier ? `It runs your code and checks syntax, execution, and functional tests. You must pass it before finish().` : `It contains the EXACT test cases and expected output format. This is your specification — code to match it.`}
+- ${oraclePreloaded && !isVerifier ? `STUDY THE ORACLE FIRST: Before coding, study the oracle test cases pre-loaded in the first user message. They contain the EXACT tests and expected output format. This is your specification — code to match it. Do NOT waste a turn on read_file("oracle.js").` : `READ THE ${verifierLabel.toUpperCase()} FIRST: Before coding, read ${verifierFile} with read_file("${verifierFile}"). ${isVerifier ? `It runs your code and checks syntax, execution, and functional tests. You must pass it before finish().` : `It contains the EXACT test cases and expected output format. This is your specification — code to match it.`}`}
 - NEVER skip testing — you MUST run the verification and see all tests pass before finish()
 - One Action per response — never chain multiple actions
 - After each Action you receive an Observation — use it to decide your next step
 - Write the COMPLETE solution — no stubs, no TODOs, no wrappers
 - The ${verifierLabel} is the final judge — run it FIRST after writing code (step 5 in workflow). ${isVerifier ? `It checks your solution and tells you what passed/failed. Use that to debug.` : `It gives you precise expected vs got values. Use those to debug.`}
 - BUILD INCREMENTALLY: For compound algorithms, test each component independently before composing. 20 tested lines > 200 untested lines.
-- DEBUG smart: when the ${verifierLabel} fails, write a debug script that traces the EXACT failing input through your code. Print intermediate values. Find the specific line where values deviate. Fix THAT line, not random stuff.
+- DEBUG smart: when the ${verifierLabel} fails, write a debug script that traces the EXACT failing input through your code. Print intermediate values at EVERY loop iteration and branch. Find the specific line where values deviate from expected. Fix THAT line, not random stuff.
+- SURGICAL FIXES: When you identify the bug, use edit_file() to fix ONLY the broken lines. Do NOT rewrite the entire file — full rewrites introduce new bugs in previously-working code. A targeted 2-line fix is always better than a 50-line rewrite.
+- TEST ALL AFTER FIX: After ANY code change, re-run the ${verifierLabel} immediately. A fix that passes one test may break another. Never assume a fix works — verify it. If the same test still fails, your fix was wrong — try a different hypothesis.
 - RE-RESEARCH WHEN STUCK: If 3+ fixes haven't reduced the failure count, the algorithm may be fundamentally wrong. Use web_search() to research the correct approach from scratch. Delete the old file and start fresh.
 - TRUST YOUR MATH: if you compute an answer using a stated formula and it disagrees with an example, your computation is more likely correct than the example. Examples can contain errors — formulas don't lie. NEVER change a correct formula to match a wrong example. Instead, note the discrepancy in your finish() summary.`
     : `\nRULES:
@@ -153,7 +160,9 @@ KEY PRINCIPLE: Verify each piece BEFORE composing. A wrong component poisons the
 - After each Action you receive an Observation — use it to decide your next step
 - Write the COMPLETE solution — no stubs, no TODOs, no wrappers
 - The ${verifierLabel} is the final judge — run it FIRST after writing code (step 3 in workflow). ${isVerifier ? `It checks your solution and tells you what passed/failed. Use that to debug.` : `It gives you precise expected vs got values. Use those to debug.`}
-- DEBUG smart: when the ${verifierLabel} fails, write a debug script that traces the EXACT failing input through your code. Print intermediate values. Find the specific line where values deviate. Fix THAT line, not random stuff.
+- DEBUG smart: when the ${verifierLabel} fails, write a debug script that traces the EXACT failing input through your code. Print intermediate values at EVERY loop iteration and branch. Find the specific line where values deviate from expected. Fix THAT line, not random stuff.
+- SURGICAL FIXES: When you identify the bug, use edit_file() to fix ONLY the broken lines. Do NOT rewrite the entire file — full rewrites introduce new bugs in previously-working code. A targeted 2-line fix is always better than a 50-line rewrite.
+- TEST ALL AFTER FIX: After ANY code change, re-run the ${verifierLabel} immediately. A fix that passes one test may break another. Never assume a fix works — verify it. If the same test still fails, your fix was wrong — try a different hypothesis.
 - TRUST YOUR MATH: if you compute an answer using a stated formula and it disagrees with an example, your computation is more likely correct than the example. Examples can contain errors — formulas don't lie. NEVER change a correct formula to match a wrong example. Instead, note the discrepancy in your finish() summary.`
 
   const decompositionSection = isDocument ? "" : `\nDECOMPOSITION — spawn peer researchers for independent sub-problems:

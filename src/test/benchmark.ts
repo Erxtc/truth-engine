@@ -9,6 +9,11 @@
  *   bun run src/test/benchmark.ts fibonacci dijkstra     # specific problems
  *   bun run src/test/benchmark.ts --consistency          # run each problem 2x, flag flaky
  *   CONSISTENCY_RUNS=3 bun run src/test/benchmark.ts --consistency --all
+ *   bun run src/test/benchmark.ts --prompt-report        # show prompt version history
+ *   bun run src/test/benchmark.ts --cross-prompt         # per-problem comparison across prompt versions
+ *   bun run src/test/benchmark.ts --cross-prompt fibonacci  # cross-prompt for specific problem
+ *   bun run src/test/benchmark.ts --force                # re-run even trusted problems
+ *   bun run src/test/benchmark.ts --no-prompt-cache       # disable trusted-problem skipping
  */
 
 import { PROBLEMS, type TestProblem } from "./benchmark-problems";
@@ -18,7 +23,14 @@ import type { ProblemEfficiency } from "../analysis/efficiency-tracker";
 import { formatMs, formatTokens, formatCost } from "../utils/format";
 import { readFileSync } from "fs";
 import { resolve, dirname } from "path";
-import { recordPromptRun, generatePromptReport } from "../analysis/prompt-version-tracker";
+import {
+  recordPromptRun,
+  generatePromptReport,
+  generateCrossPromptComparison,
+  formatCrossPromptReport,
+  getTrustedProblems,
+  getCurrentPromptHash,
+} from "../analysis/prompt-version-tracker";
 
 const ROOT = resolve(dirname(import.meta.filename!), "..", "..");
 
@@ -117,6 +129,9 @@ function runPipeline(problem: TestProblem): { passed: boolean; calls: number; to
 // ── Filter logic ──────────────────────────────────────────────────────────────
 
 let isConsistency = false;
+let isCrossPrompt = false;
+let skipTrusted = true; // default: skip problems with >2 consistent passes
+let showPromptReport = false;
 
 function getProblems(args: string[]): { problems: TestProblem[]; label: string } {
   let mode: "all" | "failing" | "tier" | "named" = "named";
@@ -127,6 +142,10 @@ function getProblems(args: string[]): { problems: TestProblem[]; label: string }
     if (arg === "--all") mode = "all";
     else if (arg === "--failing") mode = "failing";
     else if (arg === "--consistency") { isConsistency = true; }
+    else if (arg === "--cross-prompt") { isCrossPrompt = true; }
+    else if (arg === "--force") { skipTrusted = false; }
+    else if (arg === "--no-prompt-cache") { skipTrusted = false; }
+    else if (arg === "--prompt-report") { showPromptReport = true; }
     else if (arg.startsWith("--tier=")) { mode = "tier"; tierFilter = arg.slice(7); }
     else if (arg.startsWith("--")) continue;
     else names.push(arg);
@@ -256,10 +275,35 @@ async function runConsistencyCheck(problems: TestProblem[], runCount: number): P
 
 // ── Benchmark ─────────────────────────────────────────────────────────────────
 
-async function runBenchmark(problems: TestProblem[], label: string): Promise<void> {
+async function runBenchmark(problems: TestProblem[], label: string, skipTrusted: boolean): Promise<void> {
   console.log(`\n═══════════════════════════════════════════════════════════════`);
   console.log(`  BENCHMARK — ${problems.length} problem(s) (${label})`);
   console.log(`═══════════════════════════════════════════════════════════════\n`);
+
+  // Determine which problems to skip (trusted = >2 runs, all passing with current prompt)
+  const skippedProblems: string[] = [];
+  const activeProblems: TestProblem[] = [];
+
+  const currentHash = getCurrentPromptHash();
+  if (skipTrusted && currentHash) {
+    const trustedNames = new Set(getTrustedProblems());
+    for (const p of problems) {
+      if (trustedNames.has(p.name)) {
+        skippedProblems.push(p.name);
+      } else {
+        activeProblems.push(p);
+      }
+    }
+    if (skippedProblems.length > 0) {
+      console.log(`  ⏭  Skipping ${skippedProblems.length} trusted problem(s) (>2 consistent passes with current prompt):`);
+      for (const name of skippedProblems) {
+        console.log(`     ✓ ${name}`);
+      }
+      console.log(`  Use --force to re-run all problems.\n`);
+    }
+  } else {
+    activeProblems.push(...problems);
+  }
 
   const results: ProblemEfficiency[] = [];
   let totalPipelineCalls = 0;
@@ -270,9 +314,9 @@ async function runBenchmark(problems: TestProblem[], label: string): Promise<voi
 
   const startTime = Date.now();
 
-  for (let i = 0; i < problems.length; i++) {
-    const p = problems[i]!;
-    const progress = `[${i + 1}/${problems.length}]`;
+  for (let i = 0; i < activeProblems.length; i++) {
+    const p = activeProblems[i]!;
+    const progress = `[${i + 1}/${activeProblems.length}]`;
     console.log(`${progress} ${p.name} (${p.complexity})…`);
 
     const pl = runPipeline(p);
@@ -320,18 +364,27 @@ async function runBenchmark(problems: TestProblem[], label: string): Promise<voi
 
   const elapsed = Date.now() - startTime;
 
+  // ── Summary ───────────────────────────────────────────────────────────
+  const totalProblems = problems.length;
+  const totalActive = activeProblems.length;
+  const totalSkipped = skippedProblems.length;
+
   console.log(`\n═══════════════════════════════════════════════════════════════`);
   console.log(`  SUMMARY`);
   console.log(`═══════════════════════════════════════════════════════════════`);
-  console.log(`  Problems:       ${problems.length}`);
-  console.log(`  Passed:         ${passed}/${problems.length} (${(passed / problems.length * 100).toFixed(0)}%)`);
+  console.log(`  Problems:       ${totalProblems} (${totalActive} run, ${totalSkipped} skipped)`);
+  console.log(`  Passed:         ${passed}/${totalActive} (${totalActive > 0 ? (passed / totalActive * 100).toFixed(0) : 0}%)`);
   console.log(`  Total calls:    ${totalPipelineCalls}`);
-  console.log(`  Avg calls:      ${(totalPipelineCalls / problems.length).toFixed(1)} per problem`);
-  console.log(`  Total tokens:   ${formatTokens(totalPipelineTokens)}`);
-  console.log(`  Avg tokens:     ${formatTokens(totalPipelineTokens / problems.length)} per problem`);
+  if (totalActive > 0) {
+    console.log(`  Avg calls:      ${(totalPipelineCalls / totalActive).toFixed(1)} per problem`);
+    console.log(`  Total tokens:   ${formatTokens(totalPipelineTokens)}`);
+    console.log(`  Avg tokens:     ${formatTokens(totalPipelineTokens / totalActive)} per problem`);
+  }
   if (totalPipelineCost > 0) {
     console.log(`  Total cost:     ${formatCost(totalPipelineCost)}`);
-    console.log(`  Avg cost:       ${formatCost(totalPipelineCost / problems.length)} per problem`);
+    if (totalActive > 0) {
+      console.log(`  Avg cost:       ${formatCost(totalPipelineCost / totalActive)} per problem`);
+    }
   }
   console.log(`  Total time:     ${formatMs(elapsed)}`);
 
@@ -341,12 +394,24 @@ async function runBenchmark(problems: TestProblem[], label: string): Promise<voi
     const costLine = r.pipelineCost ? `  ${formatCost(r.pipelineCost)}` : '';
     console.log(`    ${icon} ${r.name.padEnd(22)} ${String(r.pipelineCalls).padStart(2)} calls  ${formatTokens(r.pipelineTokens).padStart(8)}${costLine}`);
   }
+  for (const name of skippedProblems) {
+    console.log(`    ✓ ${name.padEnd(22)}  SKIPPED (trusted — >2 consistent passes)`);
+  }
 
   try {
     const diff = recordEfficiency(results);
     printEfficiencyReport(diff);
   } catch (err) {
     console.log(`  [efficiency] Failed to record: ${(err as Error).message}`);
+  }
+
+  // ── Cross-prompt analysis (always shown after benchmarks with multi-version data) ──
+  const crossPrompt = generateCrossPromptComparison();
+  if (crossPrompt.length > 0) {
+    const multiVersion = crossPrompt.filter(r => r.versionCount > 1);
+    if (multiVersion.length > 0) {
+      console.log(formatCrossPromptReport(crossPrompt));
+    }
   }
 }
 
@@ -356,13 +421,33 @@ async function main() {
   const args = process.argv.slice(2);
   const { problems, label } = getProblems(args);
 
-  // Check for --prompt-report flag (can be used standalone or with other modes)
-  const showPromptReport = args.includes("--prompt-report");
+  // ── Standalone cross-prompt analysis ──────────────────────────────────
+  if (isCrossPrompt && !isConsistency) {
+    const problemNames = problems.length > 0 ? problems.map(p => p.name) : undefined;
+    console.log(formatCrossPromptReport(generateCrossPromptComparison(problemNames)));
 
+    // If we have trusted problems for current prompt, show them
+    const currentHash = getCurrentPromptHash();
+    if (currentHash) {
+      const trusted = getTrustedProblems();
+      if (trusted.length > 0) {
+        console.log(`\nTrusted problems (current prompt, >2 consistent passes):`);
+        for (const name of trusted) console.log(`  ✓ ${name}`);
+        console.log(`These will be skipped in benchmarks unless --force is used.\n`);
+      }
+    }
+    return;
+  }
+
+  // ── Standalone prompt report (no problems to run) ─────────────────────
   if (showPromptReport && problems.length === 0) {
-    // Standalone prompt report — no benchmarks to run, just show history
     console.log(generatePromptReport());
     return;
+  }
+
+  if (showPromptReport && !isConsistency && !isCrossPrompt) {
+    // Show prompt report BEFORE running benchmarks (so user sees state before changes)
+    console.log(generatePromptReport());
   }
 
   if (problems.length === 0) {
@@ -374,11 +459,11 @@ async function main() {
     const runCount = parseInt(process.env.CONSISTENCY_RUNS || "2", 10);
     await runConsistencyCheck(problems, Math.max(2, Math.min(runCount, 5)));
   } else {
-    await runBenchmark(problems, label);
+    await runBenchmark(problems, label, skipTrusted);
   }
 
   // Show prompt report after benchmark if requested
-  if (showPromptReport) {
+  if (showPromptReport && !isConsistency && !isCrossPrompt) {
     console.log("\n" + generatePromptReport());
   }
 }

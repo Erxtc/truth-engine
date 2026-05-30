@@ -1,6 +1,5 @@
 import * as v from 'valibot';
 import { queryLlamaCpp, queryRaw, DEFAULT_CONFIG, type LlamaModelConfig } from './llama';
-import { emit } from '../ui/events';
 import { getRegistry, type TaskProfile } from './registry';
 
 /** Known LLM roles for model routing and logging. */
@@ -96,39 +95,6 @@ async function resolveModel(role: string): Promise<LlamaModelConfig> {
     }
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
-function promptPreview(p: string, max = 120): string {
-    return p.length <= max ? p : p.slice(0, max) + '…';
-}
-
-function previewResponse(obj: unknown, maxChars = 4000): string {
-    try {
-        const s = JSON.stringify(obj);
-        return s.length <= maxChars ? s : s.slice(0, maxChars) + '…';
-    } catch { return String(obj).slice(0, maxChars); }
-}
-
-// ── Timing + emit wrapper ────────────────────────────────────────────────────
-
-async function withEmit<T>(params: {
-    userPrompt: string;
-    role: string;
-    resolveModel: () => Promise<LlamaModelConfig>;
-    execute: (modelConfig: LlamaModelConfig) => Promise<T>;
-    endDetail: (result: T) => Record<string, unknown>;
-    endLabel?: (ms: number) => string;
-}): Promise<T> {
-    const t0 = Date.now();
-    const modelConfig = await params.resolveModel();
-    emit('llm:start', promptPreview(params.userPrompt), { detail: { model: modelConfig.modelName, role: params.role, prompt: params.userPrompt } });
-    const result = await params.execute(modelConfig);
-    const ms = Date.now() - t0;
-    const label = params.endLabel ? params.endLabel(ms) : `${params.role} done in ${(ms / 1000).toFixed(1)}s`;
-    emit('llm:end', label, { ms, detail: params.endDetail(result) });
-    return result;
-}
-
 // ── Public query functions ──────────────────────────────────────────────────
 
 export async function queryReasoning<T extends v.GenericSchema>(options: {
@@ -142,13 +108,8 @@ export async function queryReasoning<T extends v.GenericSchema>(options: {
     nonce?: string;
 }): Promise<{ response: v.InferOutput<T>; usage?: any }> {
     const role = options._role ?? 'reasoning';
-    return withEmit({
-        userPrompt: options.userPrompt,
-        role,
-        resolveModel: () => resolveModel(role),
-        execute: (mc) => queryLlamaCpp({ ...options, _role: role, modelConfig: mc } as any),
-        endDetail: (r) => ({ usage: r.usage, responsePreview: previewResponse(r.response) }),
-    });
+    const modelConfig = await resolveModel(role);
+    return queryLlamaCpp({ ...options, _role: role, modelConfig: modelConfig } as any);
 }
 
 export async function queryRawReasoning(options: {
@@ -160,13 +121,8 @@ export async function queryRawReasoning(options: {
     nonce?: string;
 }): Promise<string> {
     const role = options._role ?? 'prompter';
-    return withEmit({
-        userPrompt: options.userPrompt,
-        role,
-        resolveModel: () => resolveModel(role),
-        execute: (mc) => queryRaw({ ...options, modelConfig: mc, _role: role }),
-        endDetail: (r) => ({ responsePreview: r.slice(0, 200) }),
-    });
+    const modelConfig = await resolveModel(role);
+    return queryRaw({ ...options, modelConfig: modelConfig, _role: role });
 }
 
 /** Resolve the model for meta-cognitive tasks (those that call queryDeepseek*).
@@ -195,13 +151,8 @@ export async function queryDeepseek<T extends v.GenericSchema>(options: {
     maxTokens?: number;
     preprocess?: (raw: object) => object;
 }): Promise<{ response: v.InferOutput<T>; usage?: any }> {
-    return withEmit({
-        userPrompt: options.userPrompt,
-        role: 'deepseek',
-        resolveModel: resolveDeepseek,
-        execute: (mc) => queryLlamaCpp({ ...options, modelConfig: mc, _role: 'deepseek' } as any),
-        endDetail: (r) => ({ usage: r.usage, responsePreview: previewResponse(r.response) }),
-    });
+    const modelConfig = await resolveDeepseek();
+    return queryLlamaCpp({ ...options, modelConfig: modelConfig, _role: 'deepseek' } as any);
 }
 
 export async function queryDeepseekRaw(options: {
@@ -210,12 +161,7 @@ export async function queryDeepseekRaw(options: {
     temperature?: number;
     maxTokens?: number;
 }): Promise<string> {
-    return withEmit({
-        userPrompt: options.userPrompt,
-        role: 'deepseek-raw',
-        resolveModel: resolveDeepseek,
-        execute: (mc) => queryRaw({ ...options, modelConfig: mc, _role: 'deepseek-raw' }),
-        endDetail: (r) => ({ responsePreview: r.slice(0, 200) }),
-    });
+    const modelConfig = await resolveDeepseek();
+    return queryRaw({ ...options, modelConfig: modelConfig, _role: 'deepseek-raw' });
 }
 

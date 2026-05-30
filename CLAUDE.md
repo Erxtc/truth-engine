@@ -10,6 +10,8 @@
 
 **Core bet:** `tools + execution feedback + oracle verification > single LLM call`
 
+**⚠️ File safety:** Other agents are working here simultaneously. Before deleting ANY file, check: is it referenced by scripts, package.json, prompts.json, or other agents? When in doubt, don't delete — rename or comment out instead. Untracked files may be another agent's active work. Break nothing you don't understand.
+
 When you're given a task, follow this cycle:
 1. `./scripts/status.sh` — see priority targets and failing tier
 2. Pick a failing problem → `./scripts/dev.sh "problem"` — auto-classifies failure
@@ -142,6 +144,17 @@ Every change evaluated against a single LLM call (no tools, no verification).
 | Formalizer | Confidence level 4 unreachable without Lean4/Coq tooling. |
 
 Execution feedback is the only reliable signal. Concrete errors enable repair (30-40% fix rate).
+
+### Protected infrastructure — do NOT delete or modify without explicit request
+
+This section refers ONLY to pipeline agent components above. Scripts, config files,
+package.json entries, and prompts.json are INFRASTRUCTURE — never delete them.
+
+- `package.json` scripts — all of them (`develop`, `start`, `test`, `typecheck`, etc.)
+- `scripts/*.sh` — all shell scripts are intentional infrastructure
+- `scripts/*.ts` — stream-filter and other script utilities
+- `prompts.json` — prompt catalog for `bun develop`
+- `CLAUDE.md` — this file (you're reading it)
 
 ---
 

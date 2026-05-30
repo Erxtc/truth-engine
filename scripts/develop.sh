@@ -7,11 +7,16 @@
 #   bun develop "free text"     run with that specific prompt
 #   bun develop --list          list all named prompts
 #   bun develop --watch         tail the latest background run
+#   bun develop --resume        resume the last session after a crash
+#   bun develop --continue      continue the most recent conversation
 #
 # Flags:
 #   --bg                        run in background, log to file
 #   --no-pull                   skip git pull before starting
 #   --watch, -w                 tail -f the latest background run
+#   --resume, -r                resume last crashed/incomplete session
+#   --continue, -c              continue most recent conversation (claude built-in)
+#   --clean-sessions            remove completed session files
 
 set -euo pipefail
 
@@ -78,9 +83,6 @@ while [[ $# -gt 0 ]]; do
                     fi
                     DONE=$((DONE + 1))
                 else
-                    # Still running — check if PID is alive
-                    ts="${name%%-*}"
-                    age=""
                     echo "  ● $name  ($lines lines — running)"
                     RUNNING=$((RUNNING + 1))
                 fi
@@ -110,8 +112,53 @@ keys.forEach((k, i) => {
 "
             exit 0
             ;;
+        --resume|-r)
+            STATE_FILE="$LOGDIR/last-session-state.txt"
+            if [[ -f "$STATE_FILE" ]]; then
+                SESSION_ID=$(cat "$STATE_FILE" | head -1)
+                SESSION_STATE=$(cat "$LOGDIR/last-session-status.txt" 2>/dev/null || echo "unknown")
+                echo "→ Resuming session: $SESSION_ID"
+                echo "→ Previous status: $SESSION_STATE"
+                echo ""
+                mkdir -p "$LOGDIR"
+                exec claude \
+                    --print \
+                    --output-format stream-json \
+                    --include-partial-messages \
+                    --verbose \
+                    --dangerously-skip-permissions \
+                    --resume "$SESSION_ID" \
+                    2>&1 | bun run "$ROOT/scripts/stream-filter.ts"
+            else
+                echo "No session to resume."
+                echo ""
+                echo "→ Trying claude --continue instead..."
+                exec claude --continue --dangerously-skip-permissions
+            fi
+            ;;
+        --continue|-c)
+            echo "→ Continuing most recent conversation..."
+            exec claude --continue --dangerously-skip-permissions
+            ;;
+        --clean-sessions)
+            echo "→ Cleaning completed session files..."
+            CLEANED=0
+            for statefile in "$LOGDIR"/last-session-state-*.txt; do
+                [[ -f "$statefile" ]] || continue
+                if grep -q "^COMPLETED" "$statefile" 2>/dev/null; then
+                    rm -f "$statefile"
+                    CLEANED=$((CLEANED + 1))
+                fi
+            done
+            if [[ -f "$LOGDIR/last-session-status.txt" ]] && grep -q "^COMPLETED" "$LOGDIR/last-session-status.txt" 2>/dev/null; then
+                rm -f "$LOGDIR/last-session-state.txt" "$LOGDIR/last-session-status.txt"
+                CLEANED=$((CLEANED + 1))
+            fi
+            echo "   Cleaned $CLEANED session state files."
+            exit 0
+            ;;
         --help|-h)
-            echo "Usage: bun develop [--bg] [--no-pull] [NAME|N|\"prompt\"|--list|--watch|--status]"
+            echo "Usage: bun develop [--bg] [--no-pull] [NAME|N|\"prompt\"|--list|--watch|--status|--resume|--continue]"
             echo ""
             echo "  bun develop              Interactive claude session"
             echo "  bun develop clean        Run the 'clean' prompt"
@@ -121,6 +168,8 @@ keys.forEach((k, i) => {
             echo "  bun develop --list       List all named prompts"
             echo "  bun develop --status     Show all background runs + their state"
             echo "  bun develop --watch      Tail the latest background run"
+            echo "  bun develop --resume     Resume last crashed session"
+            echo "  bun develop --continue   Continue most recent conversation"
             echo ""
             echo "Flags:"
             echo "  --bg                     Run in background, log to logs/develop/"
@@ -216,15 +265,22 @@ keys.forEach(k => {
 })
 "
     echo "╠══════════════════════════════════════════════════════════════╣"
-    echo "║  Commands:  bun develop --status  (see all bg runs)        ║"
-    echo "║             bun develop --watch   (tail latest)            ║"
-    echo "║             bun develop --bg NAME (fire and forget)        ║"
-    echo "║             bun develop --list    (all prompts)            ║"
+    echo "║  Commands:  bun develop --status   (see all bg runs)       ║"
+    echo "║             bun develop --watch    (tail latest)           ║"
+    echo "║             bun develop --bg NAME  (fire and forget)       ║"
+    echo "║             bun develop --list     (all prompts)           ║"
+    echo "║             bun develop --resume   (recover from crash)    ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
 
     # Show fleet status if anything is running
     if ls "$LOGDIR"/*.log &>/dev/null; then
         mini_status
+    fi
+
+    # Check for crashed sessions
+    if [[ -f "$LOGDIR/last-session-status.txt" ]] && grep -q "^CRASHED" "$LOGDIR/last-session-status.txt" 2>/dev/null; then
+        echo "  ⚡ Crashed session available:  bun develop --resume"
+        echo ""
     fi
 
     echo "  ⚡ Launching claude with full project context + CLAUDE.md..."
@@ -273,7 +329,11 @@ mkdir -p "$LOGDIR"
 
 if $BACKGROUND; then
     # ── Background mode ─────────────────────────────────────────────────────
+    SESSION_ID=$(bun -e "console.log(crypto.randomUUID())")
+    echo "$SESSION_ID" > "$LOGDIR/last-session-state.txt"
+    echo "CRASHED:$(date +%s)" > "$LOGDIR/last-session-status.txt"
     echo "→ Background run: $LOGDIR/$LOGNAME"
+    echo "→ Session: $SESSION_ID"
     echo "→ Task: $PROMPT"
     echo ""
 
@@ -284,20 +344,22 @@ if $BACKGROUND; then
             --print \
             --dangerously-skip-permissions \
             --system-prompt "$SYSTEM_PROMPT" \
-            --no-session-persistence \
+            --session-id "$SESSION_ID" \
             "$FULL_PROMPT" \
             > "$LOGDIR/$LOGNAME" 2>&1
         RC=$?
         END=$(date +%s)
         ELAPSED=$((END - START))
         echo "EXIT:$RC ELAPSED:${ELAPSED}s $(date '+%H:%M:%S')" > "$LOGDIR/${LOGNAME%.log}.done"
-        # Signal completion visibly in the log
         if [[ "$RC" -eq 0 ]]; then
             echo "" >> "$LOGDIR/$LOGNAME"
             echo "═══ DONE (${ELAPSED}s) ═══" >> "$LOGDIR/$LOGNAME"
+            echo "COMPLETED:$(date +%s)" > "$LOGDIR/last-session-status.txt"
         else
             echo "" >> "$LOGDIR/$LOGNAME"
             echo "═══ FAILED exit=$RC (${ELAPSED}s) ═══" >> "$LOGDIR/$LOGNAME"
+            echo "── Resume with:  bun develop --resume ──" >> "$LOGDIR/$LOGNAME"
+            echo "CRASHED:$(date +%s)" > "$LOGDIR/last-session-status.txt"
         fi
     ) &>/dev/null &
 
@@ -309,15 +371,24 @@ if $BACKGROUND; then
     if kill -0 "$PID" 2>/dev/null; then
         echo "   ✓ Agent running. Use 'bun develop --watch' to follow."
         echo "   Result file:  $LOGDIR/${LOGNAME%.log}.done"
+        echo "   Session:      $SESSION_ID"
         mini_status
     else
         echo "   ✗ Agent exited immediately — check the log:"
         echo ""
         tail -20 "$LOGDIR/$LOGNAME"
+        if grep -q "CRASHED" "$LOGDIR/last-session-status.txt" 2>/dev/null; then
+            echo ""
+            echo "   ⚡ Resume with:  bun develop --resume"
+        fi
     fi
 else
     # ── Foreground mode ─────────────────────────────────────────────────────
+    SESSION_ID=$(bun -e "console.log(crypto.randomUUID())")
+    echo "$SESSION_ID" > "$LOGDIR/last-session-state.txt"
+    echo "CRASHED:$(date +%s)" > "$LOGDIR/last-session-status.txt"
     echo "→ Task: $PROMPT"
+    echo "→ Session: $SESSION_ID"
     echo ""
 
     START=$(date +%s)
@@ -329,7 +400,7 @@ else
         --verbose \
         --dangerously-skip-permissions \
         --system-prompt "$SYSTEM_PROMPT" \
-        --no-session-persistence \
+        --session-id "$SESSION_ID" \
         "$FULL_PROMPT" \
         2>&1 | bun run "$ROOT/scripts/stream-filter.ts"
     RC=${PIPESTATUS[0]}
@@ -338,12 +409,16 @@ else
 
     echo ""
     if [[ "$RC" -eq 0 ]]; then
+        echo "COMPLETED:$(date +%s)" > "$LOGDIR/last-session-status.txt"
         echo "╔══════════════════════════════════════════════════════════════╗"
         echo "║  ✓  DONE  (${ELAPSED}s)                                          ║"
         echo "╚══════════════════════════════════════════════════════════════╝"
     else
         echo "╔══════════════════════════════════════════════════════════════╗"
         echo "║  ✗  FAILED (exit=$RC, ${ELAPSED}s)                                 ║"
+        echo "╠══════════════════════════════════════════════════════════════╣"
+        echo "║  ⚡ Resume:  bun develop --resume                            ║"
+        echo "║  Session:   $SESSION_ID                                      ║"
         echo "╚══════════════════════════════════════════════════════════════╝"
     fi
     mini_status

@@ -164,23 +164,20 @@ function parseProblemExamples(problem: string): ParsedExample[] {
 
 /** Strip trailing commentary from expected values: "because ...", "since ...", parenthetical notes, "or equivalent X", etc. */
 function cleanExpected(raw: string): string {
-  // Strip trailing explanations / parenthetical annotations.
-  // IMPORTANT: only strip parenthetical content that looks like natural language
-  // (does NOT contain [, {, ", or ' — those indicate structured data like lists or dicts).
-  const stripped = raw
-    .replace(/[;,]?\s*(?:because|since|where|\(i\.e\.|—|–).*$/i, "")
+  // Strip following patterns (greedy, from first occurrence):
+  //   "or equivalent X" — alternative answer descriptions
+  //   " — ..." / " – ..." — em/en dash followed by commentary
+  //   "; because ..." / ", since ..." / "where ..." — explanatory clauses
+  let result = raw
+    .replace(/\s*or\s+equivalent\b.*$/i, "")
+    .replace(/\s*[—–].*$/, "")
+    .replace(/[;,]?\s*(?:because|since|where|\(i\.e\.)[^)]*\)?.*$/i, "")
     .replace(/\.$/, "");
-  // Strip trailing parenthetical notes — be aggressive. Multi-step:
-  // 1. Strip trailing `(text with no brackets/braces/quotes)` — natural language only
-  let result = stripped.replace(/\s*\(([^)[\]{}"']*)\)\s*$/, "");
-  // 2. Strip trailing parenthetical that has nested balanced parens, but only at end of string
-  //    e.g. "(unit square, interior point excluded)" — no structured data chars inside
-  if (result === stripped) {
-    const m = result.match(/^(.*)\s*\(([^[\]{}"']+)\)\s*$/);
-    if (m) result = m[1]!;
-  }
-  // Strip "or equivalent X" patterns
-  result = result.replace(/\s*or\s+equivalent\b.*$/i, "");
+  // Strip trailing parenthetical notes: match balanced/unanchored parens at end of string
+  // that contain only natural-language text (no brackets, braces, or quotes).
+  result = result.replace(/\s*\(([^)[\]{}"']*)\)\s*$/, "");
+  // Try again with nested parens stripped first (for double-paren cases)
+  result = result.replace(/\s*\(([^[\]{}"']+)\)\s*$/, "");
   return result.trim();
 }
 

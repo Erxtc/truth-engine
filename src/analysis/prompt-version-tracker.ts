@@ -689,7 +689,7 @@ export function isTrusted(problemName: string): boolean {
   if (!phash) return false;
 
   // Never trust flaky problems — they might fail next time
-  const verdict = state.consistencyVerdicts[problemName];
+  const verdict = state.consistencyVerdicts?.[problemName];
   if (verdict?.verdict === "flaky") return false;
 
   const threshold = state.trustedThreshold ?? 2;
@@ -727,7 +727,7 @@ export function getTrustedProblems(currentHashOverride?: string | null, threshol
     .filter(([, v]) => v.allPassed && v.count >= threshold)
     .filter(([name]) => {
       // Flaky problems are never trusted — even if recent runs all passed
-      const verdict = state.consistencyVerdicts[name];
+      const verdict = state.consistencyVerdicts?.[name];
       return verdict?.verdict !== "flaky";
     })
     .map(([name]) => name);
@@ -759,6 +759,7 @@ export function recordConsistencyVerdict(
   failures: number,
 ): void {
   const state = store.load();
+  if (!state.consistencyVerdicts) state.consistencyVerdicts = {};
   state.consistencyVerdicts[problem] = {
     verdict,
     lastChecked: new Date().toISOString(),
@@ -773,7 +774,7 @@ export function recordConsistencyVerdict(
 
 /** Get all persisted consistency verdicts. */
 export function getConsistencyVerdicts(): Record<string, ConsistencyVerdict> {
-  return { ...store.load().consistencyVerdicts };
+  return { ...(store.load().consistencyVerdicts || {}) };
 }
 
 /** Get consistency verdict for a single problem. */
@@ -803,7 +804,7 @@ export interface ProblemTrend {
   /** Trend direction based on call counts across recent runs */
   trend: "improving" | "regressing" | "stable" | "new";
   /** Pass/fail trend */
-  passTrend: "always-pass" | "always-fail" | "improved-to-pass" | "regressed-to-fail" | "flaky";
+  passTrend: "always-pass" | "always-fail" | "improved-to-pass" | "regressed-to-fail" | "flaky" | "new";
   /** Recent run data for this problem */
   recentRuns: Array<{
     timestamp: string;
@@ -1112,7 +1113,7 @@ export function clearPromptCache(): void {
   // Reset all fields
   Object.keys(state.runs).forEach(k => delete state.runs[k]);
   Object.keys(state.summaries).forEach(k => delete state.summaries[k]);
-  Object.keys(state.consistencyVerdicts).forEach(k => delete state.consistencyVerdicts[k]);
+  if (state.consistencyVerdicts) Object.keys(state.consistencyVerdicts).forEach(k => delete state.consistencyVerdicts[k]);
   state.currentHash = null;
   state.updatedAt = new Date().toISOString();
   store.markDirty();

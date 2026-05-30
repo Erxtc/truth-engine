@@ -41,8 +41,9 @@ import {
   getTrustedProblems,
   getTrustedThreshold,
   getCurrentPromptHash,
-  getPromptUsageCount,
+  getLastTrustedRun,
 } from "../analysis/prompt-version-tracker";
+import { getCacheStats } from "../llm/cache";
 
 const ROOT = resolve(dirname(import.meta.filename!), "..", "..");
 
@@ -238,7 +239,8 @@ async function runConsistencyCheck(problems: TestProblem[], runCount: number): P
 
     for (let r = 0; r < runCount; r++) {
       process.stdout.write(`${progress} ${p.name} run ${r + 1}/${runCount}… `);
-      const pl = runPipeline(p);
+      const nonce = isFresh ? `consistency-${i}-${r}-${Date.now()}` : undefined;
+      const pl = runPipeline(p, nonce);
       const icon = pl.passed ? "PASS" : "FAIL";
       console.log(`${icon} (${pl.calls}c ${formatTokens(pl.tokens)} ${formatMs(pl.durationMs)})`);
       runs.push({ passed: pl.passed, calls: pl.calls, tokens: pl.tokens, durationMs: pl.durationMs });
@@ -363,9 +365,18 @@ async function runBenchmark(problems: TestProblem[], label: string, skipTrusted:
       }
     }
     if (skippedProblems.length > 0) {
-      console.log(`  ⏭  Skipping ${skippedProblems.length} trusted problem(s) (>2 consistent passes with current prompt):`);
+      const threshold = getTrustedThreshold();
+      console.log(`  ⏭  Skipping ${skippedProblems.length} trusted problem(s) (≥${threshold} consistent passes with current prompt):`);
       for (const name of skippedProblems) {
-        console.log(`     ✓ ${name}`);
+        const lastRun = getLastTrustedRun(name, currentHash);
+        if (lastRun) {
+          const date = lastRun.timestamp.slice(0, 19);
+          const callsStr = `${lastRun.calls}c`;
+          const tokensStr = lastRun.tokens > 0 ? ` ${formatTokens(lastRun.tokens)}` : "";
+          console.log(`     ✓ ${name.padEnd(24)} last: ${date} | ${lastRun.passed ? "PASS" : "FAIL"} | ${callsStr}${tokensStr}`);
+        } else {
+          console.log(`     ✓ ${name}`);
+        }
       }
       console.log(`  Use --force to re-run all problems.\n`);
     }
@@ -387,7 +398,9 @@ async function runBenchmark(problems: TestProblem[], label: string, skipTrusted:
     const progress = `[${i + 1}/${activeProblems.length}]`;
     console.log(`${progress} ${p.name} (${p.complexity})…`);
 
-    const pl = runPipeline(p);
+    // Fresh mode: use a per-run nonce to bypass LLM response cache
+    const nonce = isFresh ? `bench-${i}-${Date.now()}` : undefined;
+    const pl = runPipeline(p, nonce);
     const costStr = pl.cost > 0 ? `  ${formatCost(pl.cost)}` : '';
     const byStr = pl.solvedBy !== "unknown" ? ` [${pl.solvedBy}]` : '';
     const hashStr = pl.systemPromptHash ? ` prompt=${pl.systemPromptHash}` : '';
@@ -481,7 +494,36 @@ async function runBenchmark(problems: TestProblem[], label: string, skipTrusted:
       console.log(formatCrossPromptReport(crossPrompt));
     }
   }
-}
+
+  // ── Cache stats ────────────────────────────────────────────────────────
+  try {
+    const stats = getCacheStats();
+    const hitPct = stats.lookups > 0 ? (stats.hitRate * 100).toFixed(0) : "--";
+    console.log("\n" + "─".repeat(66));
+    console.log(`  LLM Cache: ${stats.hits} hits / ${stats.lookups} lookups (${hitPct}% hit rate)  |  ${stats.sets} new entries`);
+    console.log(`  Mode: ${stats.enabled ? "enabled" : "off"}`);
+    console.log("─".repeat(66));
+  } catch { /* non-critical */ }
+
+  // ── What-if analysis ───────────────────────────────────────────────────
+  try {
+    const whatIfResults = generateWhatIfAnalysis(activeProblems.map(p => p.name));
+    const multiWif = whatIfResults.filter(r => r.otherVersions.length > 0);
+    if (multiWif.length > 0) {
+      const regs = multiWif.filter(r => r.regressionFrom !== null);
+      const imps = multiWif.filter(r => r.currentResult?.passed && !r.otherVersions.some(v => v.passed));
+      if (regs.length > 0 || imps.length > 0) {
+        console.log(formatWhatIfReport(whatIfResults));
+      }
+    }
+  } catch { /* non-critical */ }
+
+  // ── Improvement trends ──────────────────────────────────────────────────
+  try {
+    const tp = [...activeProblems.map(p => p.name), ...skippedProblems];
+    const trends = getImprovementTrends(tp);
+    if (trends.length > 0) console.log(formatImprovementTrends(trends));
+  } catch { /* non-critical */ }}
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
@@ -518,6 +560,29 @@ async function main() {
     console.log(generatePromptReport());
   }
 
+
+  // ── Standalone consistency report ───────────────────────────────────────
+  if (showConsistencyReport && problems.length === 0) {
+    const verdicts = getConsistencyVerdicts();
+    if (Object.keys(verdicts).length === 0) {
+      console.log("No consistency verdicts recorded yet. Run --consistency first.");
+    } else {
+      console.log(formatConsistencyReport(getConsistencyReport()));
+    }
+    return;
+  }
+
+  // ── Standalone what-if analysis ─────────────────────────────────────────
+  if (showWhatIf && problems.length === 0) {
+    console.log(formatWhatIfReport(generateWhatIfAnalysis()));
+    return;
+  }
+
+  // ── Standalone trends report ────────────────────────────────────────────
+  if (showTrends && problems.length === 0) {
+    console.log(formatImprovementTrends(getImprovementTrends()));
+    return;
+  }
   if (problems.length === 0) {
     console.log("No problems to run.");
     return;

@@ -26,9 +26,8 @@ import { getModelTier } from "./llm";
 import type { WorkingContext, Proposal, ExecutionResult, RunParams, ConfidenceLevel } from "./core/types";
 import type { SupervisorDecision } from "./agents/supervisor";
 import { HealthMonitor } from "./core/health-monitor";
-import { hashSystemPrompt, recordPromptRun, setCurrentPromptHash } from "./analysis/prompt-version-tracker";
-import { buildSystemPrompt } from "./llm/task-agent-prompt";
-import type { WorkflowConfig } from "./llm/task-agent";
+import { setCurrentPromptHash } from "./analysis/prompt-version-tracker";
+import { hashPromptTemplate } from "./analysis/prompt-template-hash";
 
 // Ensure domain executors are loaded
 import "./executors/domains/index";
@@ -47,6 +46,7 @@ function getTurnBudget(complexity: string | undefined): number {
     default:         return 5;
   }
 }
+
 
 function proposalFromCode(code: string, lang: string): Proposal {
   return {
@@ -159,7 +159,6 @@ async function runSupervisorLoop(params: {
 }): Promise<{ solved: boolean; callsSpent: number }> {
     const { domain, problem, domainType, health, setupFiles, enableWebSearch, maxTurns, label, handleEscalate, domainInvariants, oracleContent, problemLanguage, referenceData } = params;
     let callsSpent = 0;
-    let systemPromptHash = "";
     let maxDepth = params.maxDepth ?? 3;
     let maxBranches = params.maxBranches ?? 2;
     const runParams: RunParams = {
@@ -225,7 +224,6 @@ async function runSupervisorLoop(params: {
             workflow: problemLanguage ? { language: problemLanguage } : undefined,
         });
         callsSpent += retryResult.turns;
-        systemPromptHash = retryResult.systemPromptHash || systemPromptHash;
 
         if (retryResult.success) {
             health.record(100, true, "supervisor-retry");
@@ -284,19 +282,15 @@ async function main() {
   let finalSolutionCode = "";
   let oracleHash = "";
 
-  // ── Compute canonical system prompt hash (for prompt version tracking) ────
-  // This represents the "version" of the prompt that the current codebase produces.
-  // Even if individual pipeline stages (baseline, repair) build different prompts,
-  // this hash ties all results back to the current prompt code.
-  const defaultWf: WorkflowConfig = {
-    solutionFiles: ["solution.py"],
-    verifyCommand: "python3 verify.py",
-    outputDescription: "python function",
+  // ── Compute stable template hash (for prompt version tracking) ────
+  // This hash fingerprints the system prompt TEMPLATE (code structure), not the
+  // per-run instance. It only changes when the prompt source code changes — NOT
+  // when supervisor hints, failure summaries, or domain invariants are injected.
+  // This makes prompt version tracking and trusted-problem caching actually work.
+  const systemPromptHash = hashPromptTemplate({
+    complexity,
     language: cfg.problemLanguage || "python",
-    testFirst: false,
-  };
-  const canonicalSystemPrompt = buildSystemPrompt(defaultWf, { complexity });
-  let systemPromptHash = hashSystemPrompt(canonicalSystemPrompt);
+  });
   setCurrentPromptHash(systemPromptHash);
 
   let _outcomeRecorded = false;
@@ -410,7 +404,6 @@ async function main() {
     });
 
     totalCalls += taskResult.turns;
-    systemPromptHash = taskResult.systemPromptHash || systemPromptHash;
 
     if (taskResult.success) {
       console.log(`\n✓ SOLVED by task-agent (${taskResult.turns} turns, ${totalCalls} total LLM calls)`);
@@ -570,7 +563,6 @@ async function main() {
   });
 
   totalCalls += taskResult.turns;
-  systemPromptHash = taskResult.systemPromptHash || systemPromptHash;
 
   if (taskResult.success) {
     console.log(`\n✓ SOLVED by task-agent (${taskResult.turns} turns, ${totalCalls} total LLM calls)`);
@@ -623,23 +615,8 @@ async function main() {
   }
 
   } finally {
-    // ── Record prompt version run (cross-prompt tracking, auto-cache decisions) ──
-    if (systemPromptHash && outcome.domain) {
-      recordPromptRun({
-        timestamp: new Date().toISOString(),
-        problem: outcome.description.slice(0, 80) || problem.slice(0, 80),
-        systemPromptHash,
-        systemPromptPreview: `[${complexity}] ${outcome.domain}: ${problem.slice(0, 200)}`,
-        userPrompt: problem,
-        complexity,
-        passed: outcome.solved,
-        calls: totalCalls,
-        tokens: countTokensFromLog(),
-        solvedBy: outcome.solvedBy,
-      });
-    }
-
     // ── Structured result for programmatic consumers (benchmark, agents) ──────
+    // prompt-version tracking is handled by the benchmark parent process
     const solutionHash = finalSolutionCode ? sha256(finalSolutionCode) : "";
     console.log(`\n${JSON.stringify({ result: { solved: outcome.solved, solvedBy: outcome.solvedBy, totalCalls: outcome.totalCalls, domain: outcome.domain, description: outcome.description.slice(0, 200), modelTier, oracleHash, solutionHash, systemPromptHash } })}`);
   }

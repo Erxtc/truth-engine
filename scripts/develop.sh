@@ -24,6 +24,28 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$ROOT"
 
+# ── Self-heal: restore develop entry if an agent removed it ────────────────
+# Runs on EVERY invocation. If the entry is missing from package.json, it's
+# restored before anything else happens. This makes deletion harmless.
+_self_heal_develop_entry() {
+    local pkg="$ROOT/package.json"
+    if ! grep -q '"develop"' "$pkg" 2>/dev/null; then
+        bun -e "
+import { readFileSync, writeFileSync } from 'fs'
+const pkg = JSON.parse(readFileSync('$pkg', 'utf-8'))
+if (!pkg.scripts) pkg.scripts = {}
+// Reconstruct with develop first, preserving all other entries
+const scripts = { develop: 'bash scripts/develop.sh' }
+for (const [k, v] of Object.entries(pkg.scripts)) {
+  if (k !== 'develop') scripts[k] = v
+}
+pkg.scripts = scripts
+writeFileSync('$pkg', JSON.stringify(pkg, null, 2) + '\n')
+" 2>/dev/null && echo "→ Self-healed: restored 'develop' entry in package.json" || true
+    fi
+}
+_self_heal_develop_entry
+
 PROMPTS_FILE="$ROOT/prompts.json"
 LOGDIR="$ROOT/logs/develop"
 SYNC=true

@@ -170,13 +170,18 @@ function cleanExpected(raw: string): string {
   const stripped = raw
     .replace(/[;,]?\s*(?:because|since|where|\(i\.e\.|—|–).*$/i, "")
     .replace(/\.$/, "");
-  // Only strip trailing paren group if it doesn't contain structured data chars
-  const parenStripped = stripped.replace(/\s*\(([^)[\]{}"']*)\)\s*$/, "");
-  const result = parenStripped !== stripped ? parenStripped : stripped;
-  return result
-    // Strip "or equivalent X [note]" patterns: "[...] or equivalent shortest path (length 7)" → "[...]"
-    .replace(/\s*or\s+equivalent\b.*$/i, "")
-    .trim();
+  // Strip trailing parenthetical notes — be aggressive. Multi-step:
+  // 1. Strip trailing `(text with no brackets/braces/quotes)` — natural language only
+  let result = stripped.replace(/\s*\(([^)[\]{}"']*)\)\s*$/, "");
+  // 2. Strip trailing parenthetical that has nested balanced parens, but only at end of string
+  //    e.g. "(unit square, interior point excluded)" — no structured data chars inside
+  if (result === stripped) {
+    const m = result.match(/^(.*)\s*\(([^[\]{}"']+)\)\s*$/);
+    if (m) result = m[1]!;
+  }
+  // Strip "or equivalent X" patterns
+  result = result.replace(/\s*or\s+equivalent\b.*$/i, "");
+  return result.trim();
 }
 
 function pythonToJs(expr: string): string {

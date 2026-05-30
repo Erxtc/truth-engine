@@ -44,7 +44,7 @@ export class JsonFileStore<T> {
     try {
       const dir = path.dirname(this._filePath);
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-      writeFileSync(this._filePath, JSON.stringify(this._data, null, 2), "utf-8");
+      writeFileSync(this._filePath, JSON.stringify(this._data, null, 2) + "\n", "utf-8");
       this._dirty = false;
     } catch { /* disk full or permissions — non-fatal */ }
   }

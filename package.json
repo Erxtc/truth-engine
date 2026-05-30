@@ -2,13 +2,13 @@
   "name": "truth-engine",
   "private": true,
   "scripts": {
-    "develop":    "bash scripts/develop.sh",
-    "start":      "bun run src/main.ts",
-    "typecheck":  "tsc --noEmit",
-    "test":       "bun run src/test/benchmark.ts",
+    "develop": "bash scripts/develop.sh",
+    "start": "bun run src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun run src/test/benchmark.ts",
     "test:quick": "bun run src/test/benchmark.ts --quick",
-    "ui:build":   "vite build src/ui/frontend",
-    "ui:dev":     "vite src/ui/frontend"
+    "ui:build": "vite build src/ui/frontend",
+    "ui:dev": "vite src/ui/frontend"
   },
   "dependencies": {
     "jsonrepair": "^3.14.0",

@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { createHash } from "crypto";
 import type { PipelineResult } from "../core/types";
 
 // ── Shared code/text extraction ───────────────────────────────────────────
@@ -8,6 +9,11 @@ const THINK_TAG_RE = /<think>[\s\S]*?<\/think>/gi;
 /** Strip <｜end▁of▁thinking｜>think… response tags from LLM output */
 export function stripThinkTags(text: string): string {
   return text.replace(THINK_TAG_RE, '').trim();
+}
+
+/** Content-addressable SHA-256 hex hash. Default 16 chars for compact IDs. */
+export function sha256(input: string, len = 16): string {
+  return createHash("sha256").update(input).digest("hex").slice(0, len);
 }
 
 /** Extract code from raw LLM output: strip think tags, remove markdown fences */

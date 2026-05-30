@@ -219,11 +219,12 @@ const DOMAIN_PRESETS: Record<string, Partial<WorkflowConfig>> = {
     testFirst: false,
     enableWebSearch: false,
     outputType: "code",
+    workspaceSetup: ["pip install pycryptodome 2>/dev/null 1>&2 || true"],
     invariants: [
       "Implement the exact algorithm specified — do NOT substitute a different cipher/hash/encoding",
       "Match test vectors EXACTLY — cryptography is deterministic, no tolerance for approximation",
       "Handle edge cases: empty input, single character, inputs not aligned to block size, non-ASCII characters",
-      "Use only Python built-ins (bytes, bytearray, struct) — do NOT import external crypto libraries",
+      "Prefer Python built-ins for simple crypto (Caesar, hex, base64). For complex algorithms (AES, RSA, SHA), PyCryptodome is acceptable — correct API usage matters more than reinvention",
       "For padding: implement PKCS#7 exactly (pad value equals number of pad bytes added)",
       "For ciphers: preserve case for alphabetic ciphers, leave non-alphabetic characters unchanged",
       "For encodings: implement the full algorithm without relying on base64 or binascii stdlib modules",

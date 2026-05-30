@@ -8,24 +8,20 @@ import type { HealthReport } from "../core/health-monitor";
 const supervisorSchema = v.object({
 	action: v.picklist(["continue", "escalate", "pivot", "abort"]),
 	reason: v.string(),
-	direction_hint: v.fallback(v.string(), ""),
+	directionHint: v.fallback(v.string(), ""),
 	// 0 = keep current value; positive int = new value
-	new_branches: v.fallback(v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(8)), 0),
-	new_depth:    v.fallback(v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(12)), 0),
+	newBranches: v.fallback(v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(8)), 0),
+	newDepth:    v.fallback(v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(12)), 0),
 });
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
-export type SupervisorAction = "continue" | "escalate" | "pivot" | "abort";
-
 export interface SupervisorDecision {
-	action: SupervisorAction;
+	action: "continue" | "escalate" | "pivot" | "abort";
 	reason: string;
-	/** Non-empty when action === "pivot": injected as an active constraint */
 	directionHint: string;
-	/** > 0 when action === "escalate": new values to apply */
 	newBranches: number;
-	newDepth:    number;
+	newDepth: number;
 }
 
 // ── Prompt ────────────────────────────────────────────────────────────────────
@@ -76,15 +72,15 @@ DECISION RULES — check in this order and pick the FIRST one that matches:
    → The problem is unsolvable. Give up.
 
 2. PIVOT — pass rate = 0% AND total attempts >= 3 AND a dominant failure pattern exists
-   → The approach is fundamentally wrong. Provide a specific direction_hint for a DIFFERENT strategy.
-   → The direction_hint will be injected into the task-agent as an ACTIVE CONSTRAINT — be specific:
+   → The approach is fundamentally wrong. Provide a specific directionHint for a DIFFERENT strategy.
+   → The directionHint will be injected into the task-agent as an ACTIVE CONSTRAINT — be specific:
      "Use Kahn's algorithm (indegree-based) instead of DFS for topological sort"
      "Implement the Wagner-Fischer DP algorithm with a 2D table, not recursion"
      "Use a min-heap priority queue, not a sorted list, for Dijkstra"
    NEVER skip this rule: if pass rate is 0% after 3+ attempts, you MUST pivot or abort.
 
 3. ESCALATE — pass rate = 0% AND best score >= 50 AND failure pattern is NOT code-quality
-   → The model is on the right track but needs more exploration. Set new_branches=3 or 4.
+   → The model is on the right track but needs more exploration. Set newBranches=3 or 4.
    Do NOT escalate for code-quality failures ("syntax", "typeerror", "wrong-type",
    "indentation", "not defined") — those need code fixes, not more branches.
 
@@ -104,9 +100,9 @@ Return ONLY valid JSON:
 {
   "action": "continue|escalate|pivot|abort",
   "reason": "one sentence",
-  "direction_hint": "non-empty only for pivot — will become an active constraint for the agent",
-  "new_branches": 0,
-  "new_depth": 0
+  "directionHint": "non-empty only for pivot — will become an active constraint for the agent",
+  "newBranches": 0,
+  "newDepth": 0
 }
 `.trim();
 }
@@ -119,22 +115,13 @@ export async function runSupervisor(
 	health: HealthReport,
 	currentParams: RunParams,
 	lastErrorContext?: string,
-	/** Turn-by-turn summary of what the task-agent actually did — gives the
-	 *  supervisor concrete visibility into the failed approach. */
 	turnSummary?: string,
 ): Promise<SupervisorDecision> {
 	const prompt = buildPrompt(domain, problem, health, currentParams, lastErrorContext, turnSummary);
 
 	try {
 		const result = await queryDeepseek({ userPrompt: prompt, schema: supervisorSchema, temperature: 0.2 });
-		const r = result.response;
-		return {
-			action:       r.action,
-			reason:       r.reason,
-			directionHint: r.direction_hint,
-			newBranches:  r.new_branches,
-			newDepth:     r.new_depth,
-		};
+		return result.response;
 	} catch (err) {
 		console.warn("[supervisor] query failed, aborting:", (err as Error).message?.slice(0, 80));
 		return { action: "abort", reason: "Supervisor unavailable", directionHint: "", newBranches: 0, newDepth: 0 };

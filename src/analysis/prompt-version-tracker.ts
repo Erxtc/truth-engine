@@ -11,8 +11,8 @@
  * Stores data in: src/analysis/.prompt-versions.json
  */
 
-import { createHash } from "crypto";
 import { JsonFileStore } from "../utils/json-file-store";
+import { sha256 } from "../utils/general";
 
 const STORE_PATH = import.meta.dir + "/.prompt-versions.json";
 
@@ -97,12 +97,12 @@ const store = new JsonFileStore<PromptVersionState>(STORE_PATH, emptyState);
  *  Returns a 16-char hex string. */
 export function hashPrompt(systemPromptHash: string, userPrompt: string): string {
   const normalized = JSON.stringify({ s: systemPromptHash, u: userPrompt });
-  return createHash("sha256").update(normalized).digest("hex").slice(0, 16);
+  return sha256(normalized);
 }
 
 /** Compute a hash for just the system prompt (for version tracking). */
 export function hashSystemPrompt(systemPrompt: string): string {
-  return createHash("sha256").update(systemPrompt).digest("hex").slice(0, 16);
+  return sha256(systemPrompt);
 }
 
 /** Record a prompt run. Called after each problem execution. */

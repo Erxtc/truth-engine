@@ -272,3 +272,87 @@ function documentDomainSpec(name: string): DomainSpec {
 for (const name of ["research", "law", "history", "geography"]) {
 	registerDomain(documentDomainSpec(name));
 }
+
+// ── Polynomial arithmetic (hand-crafted oracle) ─────────────────────────────
+
+const POLY_DIVISION_ORACLE_JS = `
+function verify(fn) {
+  function arrEq(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b)) return false;
+    if (a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
+  }
+
+  function check(label, dividend, divisor, expectedQ, expectedR) {
+    var r = fn(dividend, divisor);
+    // Type check: must return a tuple of two arrays
+    if (!Array.isArray(r) || r.length !== 2) {
+      return { passed: false, reason: label + "-type: expected [quotient, remainder] array, got " + JSON.stringify(r) };
+    }
+    if (!Array.isArray(r[0]) || !Array.isArray(r[1])) {
+      return { passed: false, reason: label + "-type: quotient and remainder must be arrays" };
+    }
+    if (!arrEq(r[0], expectedQ)) {
+      return { passed: false, reason: label + "-quotient: expected " + JSON.stringify(expectedQ) + " got " + JSON.stringify(r[0]) };
+    }
+    if (!arrEq(r[1], expectedR)) {
+      return { passed: false, reason: label + "-remainder: expected " + JSON.stringify(expectedR) + " got " + JSON.stringify(r[1]) };
+    }
+    return null; // passed
+  }
+
+  // Example 1: (x^2 - 3x + 2) / (x - 1) = x - 2, remainder 0
+  var e1 = check("ex1", [1, -3, 2], [1, -1], [1, -2], [0]);
+  if (e1) return e1;
+
+  // Example 2: (x^3 - 2x^2 + 0x - 4) / (x - 3) = x^2 + x + 3, remainder 5
+  var e2 = check("ex2", [1, -2, 0, -4], [1, -3], [1, 1, 3], [5]);
+  if (e2) return e2;
+
+  // Example 3: (2x^3 - 3x^2 + 4x - 5) / (x^2 - 1) = 2x - 3, remainder 6x - 8
+  var e3 = check("ex3", [2, -3, 4, -5], [1, 0, -1], [2, -3], [6, -8]);
+  if (e3) return e3;
+
+  // Example 4: (3x^2 - 5) / (x^2 - 2) = 3, remainder 0x + 1
+  var e4 = check("ex4", [3, 0, -5], [1, 0, -2], [3], [0, 1]);
+  if (e4) return e4;
+
+  // Example 5: (x^3 - 8) / (x - 2) = x^2 + 2x + 4, remainder 0
+  var e5 = check("ex5", [1, 0, 0, -8], [1, -2], [1, 2, 4], [0]);
+  if (e5) return e5;
+
+  // Example 6: dividend degree < divisor degree -> quotient [0], remainder = dividend
+  var e6 = check("ex6", [5], [1, 1], [0], [5]);
+  if (e6) return e6;
+
+  // Example 7: (x^4 - 16) / (x - 2) = x^3 + 2x^2 + 4x + 8, remainder 0
+  var e7 = check("ex7", [1, 0, 0, 0, -16], [1, -2], [1, 2, 4, 8], [0]);
+  if (e7) return e7;
+
+  // Example 8: (6x^3 + 5x^2 + 0x - 7) / (3x^2 - 2x - 1) = 2x + 3, remainder 10x - 4
+  var e8 = check("ex8", [6, 5, 0, -7], [3, -2, -1], [2, 3], [10, -4]);
+  if (e8) return e8;
+
+  return { passed: true, reason: "ok" };
+}
+`;
+
+import { runCustomOracle } from "../../domains/oracle-runner";
+
+registerDomain({
+  name: "polynomial-arithmetic",
+  invariants: [
+    "Quotient and remainder must be lists of integer coefficients, highest degree first",
+    "Leading zeros must be stripped from results (zero polynomial = [0])",
+    "Polynomial identity must hold: dividend = quotient * divisor + remainder",
+    "Degree of remainder must be less than degree of divisor (unless remainder is [0])",
+  ],
+  requiredConfidence: 2,
+  solutionFormat: "Python function proposedSolution(dividend, divisor) returning (quotient, remainder) tuple of coefficient lists",
+  async run(proposal: Proposal, _ctx: WorkingContext, artifact: Artifact) {
+    return runCustomOracle(POLY_DIVISION_ORACLE_JS, proposal, artifact, "polynomial-arithmetic");
+  },
+});

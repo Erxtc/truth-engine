@@ -8,12 +8,11 @@
  *   DOMAIN=auto PROBLEM_DESC="..." bun run src/main.ts
  */
 
-import { RESTORE_INF_JS, pythonRunnerSource } from "./utils/general";
+import { RESTORE_INF_JS, pythonRunnerSource, sha256 } from "./utils/general";
 import { logEvent, finalizeLog } from "./utils/prompt-logger";
 import { loadConfig } from "./cli";
 import { detectOrGenerateDomain } from "./domains/auto-detect";
 import { getDomainSpec } from "./executors/domains/registry";
-import { createHash } from "crypto";
 import { runBaseline } from "./agents/baseline";
 import { runRepair } from "./agents/repair";
 import { runTaskAgent } from "./llm/task-agent";
@@ -284,7 +283,6 @@ async function main() {
   const outcome: RunOutcome = { solved: false, solvedBy: "pipeline", totalCalls: 0, domain: "", description: problem.slice(0, 120) };
   let finalSolutionCode = "";
   let oracleHash = "";
-  function hash(s: string): string { return createHash("sha256").update(s).digest("hex").slice(0, 16); }
 
   // ── Compute canonical system prompt hash (for prompt version tracking) ────
   // This represents the "version" of the prompt that the current codebase produces.
@@ -353,7 +351,7 @@ async function main() {
   const spec = detected.spec;
   const domain = detected.domain;
   const oracleSource = spec?.testSource ?? "";
-  oracleHash = oracleSource ? hash(oracleSource) : "no-oracle";
+  oracleHash = oracleSource ? sha256(oracleSource) : "no-oracle";
   outcome.domain = domain;
 
   // Reference data for standard algorithms (S-boxes, round constants, etc.)
@@ -642,7 +640,7 @@ async function main() {
     }
 
     // ── Structured result for programmatic consumers (benchmark, agents) ──────
-    const solutionHash = finalSolutionCode ? hash(finalSolutionCode) : "";
+    const solutionHash = finalSolutionCode ? sha256(finalSolutionCode) : "";
     console.log(`\n${JSON.stringify({ result: { solved: outcome.solved, solvedBy: outcome.solvedBy, totalCalls: outcome.totalCalls, domain: outcome.domain, description: outcome.description.slice(0, 200), modelTier, oracleHash, solutionHash, systemPromptHash } })}`);
   }
 }

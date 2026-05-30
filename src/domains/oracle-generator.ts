@@ -196,6 +196,13 @@ function pythonToJs(expr: string): string {
 function injectProblemExamples(problem: string, oracleJs: string): string {
   const examples = parseProblemExamples(problem);
   if (examples.length === 0) return oracleJs;
+
+  // Skip injection if the oracle already has its own test cases (var tests = [...])
+  // This prevents duplicate tests and avoids JS syntax issues from fallback insertion.
+  if (/\bvar\s+tests\s*=\s*\[/.test(oracleJs) || /\bconst\s+tests\s*=\s*\[/.test(oracleJs)) {
+    return oracleJs;  // Oracle already has tests, injection would duplicate
+  }
+
   const checks = examples.map((ex, i) =>
     `  var _p${i} = fn(${ex.args});\n  var _e${i} = ${ex.expected};\n  if (JSON.stringify(_p${i}) !== JSON.stringify(_e${i})) { return { passed: false, reason: "${ex.label}-fail: expected " + JSON.stringify(_e${i}) + " got " + JSON.stringify(_p${i}) }; }`
   ).join("\n\n");
@@ -203,10 +210,8 @@ function injectProblemExamples(problem: string, oracleJs: string): string {
     /(\s*)(return\s*\{\s*passed\s*:\s*true\s*,?\s*reason\s*:\s*["']ok["']\s*\}\s*;?\s*)/,
     `\n${checks}\n$1$2`,
   );
-  if (injected === oracleJs) {
-    const lastBrace = oracleJs.lastIndexOf("}");
-    if (lastBrace > 0) return oracleJs.slice(0, lastBrace) + "\n" + checks + "\n}" + oracleJs.slice(lastBrace + 1);
-  }
+  // If the pattern didn't match, return the original oracle — don't use lastIndexOf("}") fallback
+  // which can corrupt JS syntax when oracles have nested braces.
   return injected;
 }
 

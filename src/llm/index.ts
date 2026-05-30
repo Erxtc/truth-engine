@@ -3,7 +3,7 @@ import { queryLlamaCpp, queryRaw, DEFAULT_CONFIG, type LlamaModelConfig } from '
 import { getRegistry, type TaskProfile } from './registry';
 
 /** Known LLM roles for model routing and logging. */
-export type LlmRole = "supervisor" | "repair" | "baseline" | "deepseek" | "deepseek-raw" | "reasoning" | "prompter" | "task-agent";
+export type LlmRole = "supervisor" | "repair" | "baseline" | "reasoning" | "prompter" | "task-agent";
 
 const REASONING_MODEL = DEFAULT_CONFIG;
 
@@ -125,10 +125,10 @@ export async function queryDeepseek<T extends v.GenericSchema>(options: {
     userPrompt: string; systemPrompt?: string; schema: T; temperature?: number;
     maxTokens?: number; preprocess?: (raw: object) => object;
 }): Promise<{ response: v.InferOutput<T>; usage?: any }> {
-    return queryLlm({ ...options as any, model: "deepseek-cloud" });
+    return queryLlm({ ...options as any, role: "deepseek", model: "deepseek-cloud" });
 }
 export async function queryDeepseekRaw(options: {
     userPrompt: string; systemPrompt?: string; temperature?: number; maxTokens?: number;
 }): Promise<string> {
-    return queryLlmRaw({ ...options, model: "deepseek-cloud" });
+    return queryLlmRaw({ ...options, role: "deepseek", model: "deepseek-cloud" });
 }

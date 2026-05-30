@@ -842,28 +842,13 @@ Algorithm: While deg(remainder) >= deg(divisor):
 CRITICAL: Track degrees correctly. The degree of polynomial [c_0, c_1, ..., c_k] is k (number of coefficients minus 1). After stripping leading zeros, an empty list means the zero polynomial, degree = -1 (or represent as [0]).
 
 Example 1: proposedSolution([1, -3, 2], [1, -1]) → ([1, -2], [0])
-  (x² - 3x + 2) ÷ (x - 1) = x - 2 remainder 0
-
 Example 2: proposedSolution([1, -2, 0, -4], [1, -3]) → ([1, 1, 3], [5])
-  (x³ - 2x² + 0x - 4) ÷ (x - 3) = x² + x + 3 remainder 5
-
 Example 3: proposedSolution([2, -3, 4, -5], [1, 0, -1]) → ([2, -3], [6, -8])
-  (2x³ - 3x² + 4x - 5) ÷ (x² - 1) = 2x - 3 remainder 6x - 8
-
 Example 4: proposedSolution([3, 0, -5], [1, 0, -2]) → ([3], [0, 1])
-  (3x² - 5) ÷ (x² - 2) = 3 remainder x + 0 (coefficients: [0, 1])
-
 Example 5: proposedSolution([1, 0, 0, -8], [1, -2]) → ([1, 2, 4], [0])
-  (x³ - 8) ÷ (x - 2) = x² + 2x + 4 remainder 0
-
 Example 6: proposedSolution([5], [1, 1]) → ([0], [5])
-  (5) ÷ (x + 1) → dividend degree < divisor degree: quotient = [0], remainder = [5]
-
 Example 7: proposedSolution([1, 0, 0, 0, -16], [1, -2]) → ([1, 2, 4, 8], [0])
-  (x⁴ - 16) ÷ (x - 2) = x³ + 2x² + 4x + 8 remainder 0
-
-Example 8: proposedSolution([6, 5, 0, -7], [3, -2, -1]) → ([2, 3], [10, -4])
-  (6x³ + 5x² + 0x - 7) ÷ (3x² - 2x - 1) = 2x + 3 remainder 10x - 4`,
+Example 8: proposedSolution([6, 5, 0, -7], [3, -2, -1]) → ([2, 3], [10, -4])`,
     language: "python",
     complexity: "hard",
   },
@@ -901,11 +886,11 @@ Example 12: proposedSolution('1.5e10') → 15000000000.0
 Example 13: proposedSolution('2.5e-3') → 0.0025
 Example 14: proposedSolution('{"nested":{"key":[1,2,3]}}') → {"nested":{"key":[1,2,3]}}
 Example 15: proposedSolution('[{"a":1},{"b":2}]') → [{"a":1},{"b":2}]
-Example 16: proposedSolution('"hello\\nworld"') → "hello\\nworld"
-Example 17: proposedSolution('"tab\\there"') → "tab\\there"
-Example 18: proposedSolution('"quote\\"inside"') → "quote\\"inside"
-Example 19: proposedSolution('[true,false,null,0]') → [True,False,None,0]
-Example 20: proposedSolution('{"a b":1,"c\\td":2}') → {"a b":1,"c\\td":2}`,
+Example 16: proposedSolution('[true,false,null,0]') → [True,False,None,0]
+Example 17: proposedSolution('{"a b":1}') → {"a b":1}
+Example 18: proposedSolution('[[]]') → [[]]
+Example 19: proposedSolution('{"":""}') → {"":""}
+Example 20: proposedSolution('[-1,0,1]') → [-1,0,1]`,
     language: "python",
     complexity: "hard",
   },

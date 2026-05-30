@@ -138,6 +138,12 @@ export async function detectOrGenerateDomain(problem: string): Promise<AutoDetec
 		if (s) { console.log("[auto-detect] Keyword → compression"); return { domain: "compression", spec: s, wasGenerated: false }; }
 	}
 
+	// Polynomial arithmetic (division, multiplication, GCD, etc.)
+	if (/\bpolynomial\s+(?:long\s+)?division|polynomial\s+multiplication|polynomial\s+gcd|polynomial\s+arithmetic|divide\s+polynomial|dividing\s+polynomial/i.test(probLower)) {
+		const s = getDomainSpec("polynomial-arithmetic");
+		if (s) { console.log("[auto-detect] Keyword → polynomial-arithmetic"); return { domain: "polynomial-arithmetic", spec: s, wasGenerated: false }; }
+	}
+
 	// CLI Project
 	const pCliKws = ["programming language", "compiler for", "interpreter for",
 		"create a language", "design a language", "build a shell",

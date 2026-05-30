@@ -11,9 +11,9 @@
  *   "clear" — delete the cache file on startup, then behave as "on"
  */
 
-import { createHash } from "crypto";
 import { unlinkSync } from "fs";
 import { JsonFileStore } from "../utils/json-file-store";
+import { sha256 } from "../utils/general";
 
 const CACHE_PATH = import.meta.dir + "/.llm-cache.json";
 
@@ -53,7 +53,7 @@ function load(): CacheData {
 export function cacheKey(payload: Record<string, unknown>): string {
   const { model, messages, temperature, max_tokens, response_format, nonce } = payload;
   const normalized = JSON.stringify({ model, messages, temperature, max_tokens, response_format, nonce });
-  return createHash("sha256").update(normalized).digest("hex").slice(0, 32);
+  return sha256(normalized, 32);
 }
 
 /** Look up a cached response. Returns null on miss or if cache is off. */

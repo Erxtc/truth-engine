@@ -4,9 +4,9 @@
  *
  * Backed by JsonFileStore for persistence (lazy-load, dirty-flag, auto-save).
  */
-import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { JsonFileStore } from "../utils/json-file-store";
+import { sha256 } from "../utils/general";
 
 const CACHE_PATH = join(import.meta.dir, "..", ".oracle-cache.json");
 
@@ -22,16 +22,12 @@ export interface CachedOracle {
 type CacheData = Record<string, CachedOracle>;
 const store = new JsonFileStore<CacheData>(CACHE_PATH, () => ({}));
 
-function hash(problem: string): string {
-  return createHash("sha256").update(problem.trim()).digest("hex").slice(0, 16);
-}
-
 export function getCachedOracle(problem: string): CachedOracle | null {
-  return store.load()[hash(problem)] ?? null;
+  return store.load()[sha256(problem.trim())] ?? null;
 }
 
 export function putCachedOracle(problem: string, oracle: CachedOracle): void {
-  store.load()[hash(problem)] = oracle;
+  store.load()[sha256(problem.trim())] = oracle;
   store.markDirty();
 }
 

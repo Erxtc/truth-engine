@@ -10,14 +10,13 @@
  * decides what to do next based on what it observes.
  */
 
-import { createHash } from "crypto";
 import { queryDeepseekRaw, queryRawReasoning } from "./index";
 import { Sandbox } from "../executors/sandbox/index";
 import { searchWeb, formatSearchResults, fetchWebPage, formatFetchResult } from "./web-search";
 import { getPreset } from "./workflow-presets";
 import { buildSystemPrompt, buildSubAgentSystemPrompt } from "./task-agent-prompt";
 import { StuckLoopDetector, isSelfTerminated } from "./stuck-loop-detector";
-import { parseOracleOutput } from "../utils/general";
+import { parseOracleOutput, sha256 } from "../utils/general";
 import type { TurnRecord } from "./stuck-loop-detector";
 import { HealthMonitor } from "../core/health-monitor";
 
@@ -644,7 +643,7 @@ async function chatTurn(
     systemPrompt: messages.find(m => m.role === "system")?.content,
     temperature: 0.2,
     maxTokens: 4096,
-    _role: "task-agent",
+    role: "task-agent",
   });
 }
 
@@ -770,6 +769,32 @@ export async function runTaskAgent(
     }
   }
 
+  // Generate a workspace README so the model knows the layout without discovery turns.
+  // This persists across conversation turns unlike the pre-loaded oracle content.
+  const readmeLines = [`# Workspace — problem: ${task.slice(0, 120)}`];
+  if (cfg.setupFiles) {
+    readmeLines.push("\n## Files");
+    for (const f of Object.keys(cfg.setupFiles)) {
+      readmeLines.push(`  - ${f} — pre-loaded, ready to use`);
+    }
+  }
+  readmeLines.push(`\n## Verify`);
+  readmeLines.push(`  Run: \`${workflow.verifyCommand}\` (oracle judges correctness)`);
+  if (workflow.solutionFiles.length > 0) {
+    readmeLines.push(`\n## Solution file to create`);
+    for (const f of workflow.solutionFiles) {
+      readmeLines.push(`  - ${f}`);
+    }
+  }
+  if (setupCommands.length > 0) {
+    readmeLines.push(`\n## Setup already done`);
+    for (const cmd of setupCommands) {
+      readmeLines.push(`  - ${cmd}`);
+    }
+  }
+  sandbox.write("WORKSPACE.md", readmeLines.join("\n"));
+  transcript.push(`[setup] Generated WORKSPACE.md`);
+
   const isDocument = workflow.outputType === "document" || workflow.outputType === "analysis";
   const systemPrompt = cfg._systemPromptOverride ?? buildSystemPrompt(workflow, {
     complexity: cfg.complexity,
@@ -777,7 +802,7 @@ export async function runTaskAgent(
     previousAttemptSummary: cfg.previousAttemptSummary,
     oraclePreloaded: !!cfg.oracleContent,
   });
-  const systemPromptHash: string = createHash("sha256").update(systemPrompt).digest("hex").slice(0, 16);
+  const systemPromptHash: string = sha256(systemPrompt);
 
   // Build the first user message — include oracle content if available so the
   // model knows the test cases without spending a turn on read_file("oracle.js").

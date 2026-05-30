@@ -27,7 +27,7 @@ export const customDomainSchema = v.object({
 
 // ── Oracle examples for the LLM prompt ────────────────────────────────────
 
-export function buildOracleExamples(): string {
+function buildOracleExamples(): string {
 	const examples = [
 		{
 			domain_name: "arithmetic",
@@ -86,7 +86,7 @@ export function buildOracleExamples(): string {
 // ── Oracle sanitization ───────────────────────────────────────────────────
 
 /** Replace non-JSON-serializable JS literals so oracle comparisons don't blow up. */
-export function sanitizeOracleJs(js: string): string {
+function sanitizeOracleJs(js: string): string {
 	return js
 		.replace(/\bNaN\b/g, "null")
 		.replace(/\bundefined\b/g, "null");
@@ -134,7 +134,9 @@ interface ParsedExample {
   label: string;
 }
 
-/** Parse example assertions from problem description (e.g. "Example 1: f(X) → Y"). */
+/** Parse example assertions from problem description (e.g. "Example 1: f(X) → Y").
+ *  Only returns examples whose expected values are valid JS expressions — skips
+ *  examples with English descriptions, "or" alternatives, or other non-JS text. */
 function parseProblemExamples(problem: string): ParsedExample[] {
   const examples: ParsedExample[] = [];
   const exampleBlock = /(?:^|\n)\s*(?:Example\s*(\d+)[:.])?\s*(?:proposedSolution|fn)\s*\(([^)]*(?:\([^)]*\)[^)]*)*)\)\s*(?:→|->|returns?|=)\s*(.+?)(?:\n|$)/gm;
@@ -144,9 +146,14 @@ function parseProblemExamples(problem: string): ParsedExample[] {
     const rawArgs = (match[2] || "").trim();
     const rawExpected = cleanExpected((match[3] || "").trim());
     if (!rawArgs || !rawExpected) continue;
+    const jsExpected = pythonToJs(rawExpected);
+    if (!isValidJsExpression(jsExpected)) {
+      console.log(`[auto-detect] Skipping example ${num} — expected value is not valid JS: "${rawExpected.slice(0, 60)}"`);
+      continue;
+    }
     examples.push({
       args: pythonToJs(rawArgs),
-      expected: pythonToJs(rawExpected),
+      expected: jsExpected,
       label: `example-${num}`,
     });
   }
@@ -157,7 +164,13 @@ function parseProblemExamples(problem: string): ParsedExample[] {
       const rawArgs = (m[1] || "").trim();
       const rawExpected = cleanExpected((m[2] || "").trim());
       if (!rawArgs || !rawExpected) continue;
-      examples.push({ args: pythonToJs(rawArgs), expected: pythonToJs(rawExpected), label: `problem-example-${count++}` });
+      const jsExpected = pythonToJs(rawExpected);
+      if (!isValidJsExpression(jsExpected)) {
+        console.log(`[auto-detect] Skipping inline example ${count} — expected value is not valid JS: "${rawExpected.slice(0, 60)}"`);
+        count++;
+        continue;
+      }
+      examples.push({ args: pythonToJs(rawArgs), expected: jsExpected, label: `problem-example-${count++}` });
     }
   }
   return examples;
@@ -165,14 +178,56 @@ function parseProblemExamples(problem: string): ParsedExample[] {
 
 /** Strip trailing commentary from expected values: "because ...", "since ...", parenthetical notes, "or equivalent X", etc. */
 function cleanExpected(raw: string): string {
-  return raw
+  // ORDER MATTERS: strip "or [value]" BEFORE parentheticals. For inputs like
+  // "[1,3,0,2] (.Q../...Q/Q.../..Q.) or [2,0,3,1]", we must remove the
+  // "or [2,0,3,1]" first so the parenthetical becomes the trailing element
+  // and can be stripped. Use an iterative loop to handle cascading cleanups.
+  let result = raw
     .replace(/[;,]?\s*(?:because|since|where|\(i\.e\.|—|–).*$/i, "")
     .replace(/\.$/, "")
-    // Strip trailing parenthetical annotations: "None (wall blocks path)" → "None", '["a","b"] (max 5, sorted)' → '["a","b"]'
-    .replace(/\s*\([^)]*\)\s*$/, "")
-    // Strip "or equivalent X [note]" patterns: "[...] or equivalent shortest path (length 7)" → "[...]"
-    .replace(/\s*or\s+equivalent\b.*$/i, "")
-    .trim();
+    // Strip "or [alternative]" FIRST — before parenthetical stripping
+    .replace(/\s+or\s+(?:\[[^\]]*\](?:\s*\([^)]*\))?|"[^"]*"|'[^']*'|\d[\d.,]*)\s*(?:\([^)]*\))?\s*$/, "")
+    .replace(/\s+or\s+\[[^\]]*\](?:\s*\([^)]*\))?/, "");
+  // Iteratively strip trailing parentheticals and "or equivalent" notes
+  let prev = "";
+  while (prev !== result) {
+    prev = result;
+    result = result
+      .replace(/\s*or\s+equivalent\b.*$/i, "")
+      .replace(/\s*\([^)]*\)\s*$/, "");
+  }
+  return result.trim();
+}
+
+/** Check whether a string expression is valid JavaScript that can be safely used as an expected value in oracle JS.
+ *  Returns true for JS literals (numbers, strings, booleans, null, arrays, objects, and valid nested combinations).
+ *  Returns false for English phrases, partial code, and malformed expressions. */
+function isValidJsExpression(expr: string): boolean {
+  if (!expr || expr.length === 0) return false;
+
+  // Quick rejection: if it starts with a lowercase letter (not true/false/null), it's likely English
+  if (/^[a-z]/.test(expr) && !/^(true|false|null)\b/.test(expr)) return false;
+
+  // Quick rejection: common English patterns in expected values
+  if (/^(any|some|all|each|every|no|the|a\s|an\s|valid|invalid|saturation|lower|higher|approximately)/i.test(expr)) return false;
+
+  // Quick rejection: contains English conjunctions/words that aren't JS
+  if (/\b(?:applied|threshold|configuration|integers?|either|works?|both|length|returns?|yield)\b/i.test(expr) &&
+      !/^["'\[]/.test(expr)) return false;
+
+  // Quick rejection: contains "or" which is not a JS operator (|| is JS, "or" is Python/English)
+  // But allow "or" inside strings
+  if (/\bor\b/.test(expr) && !/".*?\bor\b.*?"/.test(expr) && !/'.*?\bor\b.*?'/.test(expr)) return false;
+
+  try {
+    // Use Function constructor to evaluate the expression as a return value.
+    // This safely checks syntax without side effects (no closures, no global access via Function).
+    const fn = new Function(`"use strict"; return (${expr});`);
+    fn();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function pythonToJs(expr: string): string {
@@ -189,115 +244,152 @@ function pythonToJs(expr: string): string {
   return js;
 }
 
+/**
+ * Inject problem-statement examples as AUTHORITATIVE checks at the TOP of verify().
+ *
+ * Strategy: extracted examples are the ground truth. We place them FIRST so they
+ * determine success/failure. The LLM's body is wrapped in try-catch to prevent
+ * hallucinated function signatures or bad test data from crashing the real checks.
+ */
 function injectProblemExamples(problem: string, oracleJs: string): string {
   const examples = parseProblemExamples(problem);
   if (examples.length === 0) return oracleJs;
-  const checks = examples.map((ex, i) =>
-    `  var _p${i} = fn(${ex.args});\n  var _e${i} = ${ex.expected};\n  if (JSON.stringify(_p${i}) !== JSON.stringify(_e${i})) { return { passed: false, reason: "${ex.label}-fail: expected " + JSON.stringify(_e${i}) + " got " + JSON.stringify(_p${i}) }; }`
-  ).join("\n\n");
-  const injected = oracleJs.replace(
-    /(\s*)(return\s*\{\s*passed\s*:\s*true\s*,?\s*reason\s*:\s*["']ok["']\s*\}\s*;?\s*)/,
-    `\n${checks}\n$1$2`,
-  );
-  if (injected === oracleJs) {
-    const lastBrace = oracleJs.lastIndexOf("}");
-    if (lastBrace > 0) return oracleJs.slice(0, lastBrace) + "\n" + checks + "\n}" + oracleJs.slice(lastBrace + 1);
+
+  // Build check blocks for each valid example
+  const checks = examples.map((ex, i) => {
+    if (!isValidJsExpression(ex.expected)) {
+      console.log(`[auto-detect] Skipping injected example ${ex.label} — expected value invalid: "${ex.expected.slice(0, 60)}"`);
+      return "";
+    }
+    const escapedExpected = JSON.stringify(ex.expected);
+    return [
+      `  var _p${i} = fn(${ex.args});`,
+      `  var _e${i} = ${ex.expected};`,
+      `  if (JSON.stringify(_p${i}) !== JSON.stringify(_e${i})) { return { passed: false, reason: "${ex.label}-fail: expected " + ${escapedExpected} + " got " + JSON.stringify(_p${i}) }; }`,
+    ].join("\n");
+  }).filter(Boolean).join("\n\n");
+
+  if (!checks) return oracleJs;
+
+  const authorityBlock = `  // === AUTHORITATIVE: extracted from problem statement ===
+${checks}
+  // === END authoritative ===`;
+
+  // Find "function verify(fn) {" to inject right after it
+  const fnOpenRe = /(function\s+verify\s*\(\s*fn\s*\)\s*\{)/;
+  const fnMatch = oracleJs.match(fnOpenRe);
+  if (!fnMatch) {
+    // Can't find function opening — fall back to injecting before final return
+    const injected = oracleJs.replace(
+      /(\s*)(return\s*\{\s*passed\s*:\s*true\s*,?\s*reason\s*:\s*["']ok["']\s*\}\s*;?\s*)/,
+      `\n${checks}\n$1$2`,
+    );
+    if (injected === oracleJs) {
+      const lastBrace = oracleJs.lastIndexOf("}");
+      if (lastBrace > 0) return oracleJs.slice(0, lastBrace) + "\n" + checks + "\n}" + oracleJs.slice(lastBrace + 1);
+    }
+    return injected;
   }
-  return injected;
+
+  const fnOpenIdx = fnMatch.index! + fnMatch[0].length;
+
+  // Find the final return { passed: true, reason: "ok" }
+  const finalReturnRe = /(\n\s*return\s*\{\s*passed\s*:\s*true\s*,?\s*reason\s*:\s*["']ok["']\s*\}\s*;?\s*)/;
+  const returnMatch = oracleJs.match(finalReturnRe);
+
+  if (!returnMatch) {
+    // No standard return — inject before closing brace
+    const lastBrace = oracleJs.lastIndexOf("}");
+    if (lastBrace > 0) {
+      return oracleJs.slice(0, lastBrace) + "\n" + authorityBlock + "\n}" + oracleJs.slice(lastBrace + 1);
+    }
+    return oracleJs;
+  }
+
+  const returnIdx = returnMatch.index!;
+  const llmBody = oracleJs.slice(fnOpenIdx, returnIdx).trim();
+
+  // Build: function verify(fn) {
+  //   [AUTHORITATIVE examples — run first, determine outcome]
+  //   try { [LLM body — advisory only] } catch(_oe) {}
+  //   return { passed: true, reason: "ok" };
+  // }
+  const prefix = oracleJs.slice(0, fnOpenIdx);
+  const suffix = oracleJs.slice(returnIdx);
+  const wrappedLlmBody = llmBody
+    ? `\n  // === LLM-generated checks (advisory — try-catch for safety) ===\n  try {\n${llmBody}\n  } catch(_oe) { /* LLM check crashed — authoritative examples already verified */ }\n  // === END LLM-generated ===\n`
+    : "\n";
+
+  return `${prefix}\n${authorityBlock}\n${wrappedLlmBody}${suffix}`;
 }
 
 // ── Custom domain generation ──────────────────────────────────────────────
 
 export async function generateCustomDomain(problem: string): Promise<DomainSpec | null> {
-	const examples = buildOracleExamples();
-	const prompt = `
-You are designing a verification system for an automated problem-solving engine.
+	const exampleDocs = buildOracleExamples();
+	const probExamples = parseProblemExamples(problem);
 
-Problem:
+	// Short, examples-first prompt. The old 100+ line/17-rule prompt caused models
+	// to ignore "COPY TEST CASES" and invent their own — the #1 oracle failure mode.
+	const jsRules = `JS RULES (critical):
+- Use [] for arrays, NEVER () — (a,b) evaluates to just b in JS (comma operator)
+- Check type before value: if (!Array.isArray(r)) return {passed:false,reason:"not-array"}
+- Float tolerance: if (Math.abs(got - expected) >= 0.01) — use >= not >
+- Reason on fail: include expected vs got, use JSON.stringify for values
+- NaN → null, undefined → null
+- No aggregate/sum checks — check individual values`;
+
+	const prompt = probExamples.length > 0 ? `
+Design a verification oracle. Use ONLY these test cases:
+
+PROBLEM:
 ${problem}
 
-Your task: design a domain spec that can verify proposed solutions to this problem.
+TEST CASES FROM PROBLEM (use EXACTLY these — do NOT create your own):
+${probExamples.map((ex) => `  fn(${ex.args}) → ${ex.expected}`).join("\n")}
 
-CRITICAL — oracle design rules:
-  1. oracle_js is a JavaScript function verify(fn) where fn is the proposed solution function.
-  2. COPY TEST CASES FROM THE PROBLEM. Every single fn() call in your oracle MUST correspond to an
-     example explicitly given in the problem statement. Copy the inputs and expected outputs VERBATIM.
-     DO NOT create your own test cases, variations, or "better" examples.
-     If the problem has 3 examples, your oracle has exactly those 3 fn() calls — no more, no less.
-     This is the #1 cause of wrong oracles — the oracle must test what the problem asks, not what you think.
-  3. EXPECTED VALUES — TWO CASES:
-     CASE A — PROBLEM HAS EXPLICIT FORMULAS (physics, engineering, chemistry, etc.):
-       The problem states equations like "F = m*a" or "δ = (5*w*L⁴)/(384*E*I)". COMPUTE expected values using those formulas.
-       Examples can contain ERRORS. Trust the formula, not the example. If computation disagrees with example, use YOUR computed value.
-       var expected = /* compute from the stated formula */;
-       This is CRITICAL: copying a wrong example value when a formula is available will silently validate wrong code!
-     CASE B — NO FORMULAS (algorithmic, sorting, DP, ciphers, etc.):
-       Copy expected values VERBATIM from the problem statement — NEVER compute or re-derive them yourself.
-       If problem says "f(12)=[2,2,3]", write: var exp=[2,2,3]; (3 elements, copied exactly as stated)
-  4. For lists that could come in any order: sort both before comparing. Example:
-     var got=fn(n).slice().sort(); var exp=[2,2,3]; if(JSON.stringify(got)!==JSON.stringify(exp)) return {passed:false,reason:"fail"};
-  5. For dict/object returns: check each expected key individually, no aggregate sum checks.
-  6. For equations: verify by substituting into the equations.
-  7. reason strings: For SUCCESS use "ok". For FAILURE, include what was expected vs what was received so the repair agent can fix the bug. Use JSON.stringify() to convert values to strings. Example: "example1-fail: expected [0,1,3,4] got [0,3,4]". This is CRITICAL — without expected/got, the repair agent cannot fix anything.
-  8. NO sum/total/aggregate checks — they cause false negatives. Only check the values stated in the problem.
-  9. PRESERVE input formats EXACTLY as shown in the problem. If the problem says graph[u] = [(v,w), ...] (list of pairs),
-     use arrays-of-arrays in JS: {"A": [["B",1],["C",4]], "D": []} — NEVER convert to {v: w} dict-of-dicts.
-     The solver will receive the EXACT structure you pass to fn(), so it must match what the problem describes.
- 10. CRITICAL — no Python tuples in JavaScript: JS does NOT have tuples. (a, b) in JS is the comma operator which evaluates to JUST b.
-     When the problem uses tuple notation (row_payoff, col_payoff) or (price, quantity), you MUST use ARRAYS [a, b] in your oracle JS.
-     Example: if fn() should receive [[[(row_pay, col_pay), ...], ...], ...], write [[[[3, 3], [0, 0]], [[0, 0], [2, 2]]]].
-     NEVER write (3, 3) in JS — it silently evaluates to 3, so the function receives a flat number instead of a pair.
- 11. For graph/tree inputs: include ALL nodes as keys (with [] or {} for terminal nodes with no outgoing edges).
- 12. CRITICAL for in-place mutation: the solution runs in a subprocess — it CANNOT mutate JS variables.
-     ALWAYS capture the return value and check it: var r = fn(x); if (r[0][0] !== 7) ...
-     NEVER check the original variable after calling fn: fn(m1); if (m1[0][0] ... // WRONG — m1 is unchanged
-     The harness returns the first argument when the function returns null/None, so in-place mutations are visible via the return value.
- 13. CRITICAL — type-before-value: ALWAYS validate the return type before accessing indices or doing arithmetic.
-     If the function should return a tuple: if (!Array.isArray(r) || r.length < 2) return {passed:false,reason:"not-tuple"};
-     If the function should return a number: if (typeof r !== "number") return {passed:false,reason:"not-number"};
-     If the function returns None/null: if (r === null) return {passed:false,reason:"unexpected-null"} (unless null IS the expected output).
-     NEVER do Math.abs(r[0] - expected) on a value that might not be an array.
-     Math.abs(undefined - 50) produces NaN, and NaN > 0.01 is false — the oracle silently passes broken code!
- 14. CRITICAL — floating-point comparisons: ALWAYS use >= (NOT >) for tolerance checks.
-     BAD:  if (Math.abs(got - expected) > 0.01)  ← boundary failures from IEEE 754 precision
-     GOOD: if (Math.abs(got - expected) >= 0.01)
-     When expected values are marked "(approximately)", use at least 0.5% relative tolerance instead of fixed 0.01.
-     GOOD: if (Math.abs(got - expected) >= Math.max(0.01, Math.abs(expected) * 0.005))
- 15. CRITICAL — OUTPUT FORMAT: Read the problem's return/output clause LITERALLY. Do NOT substitute a different output
-     format based on your training knowledge. Your job is to verify what the problem ASKS FOR, not what you think it should ask for.
+CRITICAL: Copy the EXACT function signature from the examples above.
+These test cases are authoritative — they define the correct inputs/outputs.
 
-     COMMON FAILURE: Problem says "return list of (row_idx, col_idx) tuples for all Nash equilibria" but oracle
-     expects [p1, p2] probabilities. WRONG — the problem wants INDEX PAIRS like [[1, 1]] or [[0, 0], [1, 1]], NOT [0.5, 0.5].
+${jsRules}
 
-     COMMON FAILURE: Problem says "return the shortest path as a list of nodes [start, ..., target]" but oracle
-     checks for path length. WRONG — check the actual path nodes.
+Return JSON: { domain_name, invariants, required_confidence: 2, oracle_js, solution_format }`.trim() : `
+Design a verification oracle. IMPLEMENT formulas inside verify():
 
-     The solution_format field MUST describe the exact return type and structure the problem specifies.
-     If the problem gives examples of return values, COPY those EXACTLY into the expected values in oracle_js.
-     DO NOT reinterpret "index tuples" as probabilities, "paths" as distances, or "indices" as values.
+PROBLEM:
+${problem}
 
- 16. CRITICAL — FUNCTION SIGNATURE: Match the EXACT parameter list from the problem. If the problem says
-     proposedSolution(data, block_size, mode), your fn() calls MUST pass ALL three arguments: fn(data, block_size, mode).
-     DO NOT drop parameters or change their order. If the problem has both "pad" and "unpad" modes, test BOTH modes
-     using the problem's examples — don't test only one mode.
+No explicit test cases — you MUST implement the problem's formulas/equations
+INSIDE verify() to compute expected values programmatically. Use the EXACT
+formulas from the problem statement (copy equations verbatim into code).
 
-     The solution_format must include ALL required parameters: "A function proposedSolution(data, block_size, mode)
-     that pads (mode='pad') or unpads (mode='unpad') data using PKCS#7."
+PATTERN:
+  function verify(fn) {
+    // Step 1: implement the formula computation
+    function computeExpected(...) { /* use problem's exact formulas */ }
 
-     For cryptographic standards (PKCS#7, AES, etc.): a full block of padding is ALWAYS added, even when the
-     input is already block-aligned. This is REQUIRED for unambiguous unpadding.
+    // Step 2: call fn() and computeExpected() with the same inputs
+    var got = fn(inputs);
+    var exp = computeExpected(inputs);
 
-Fields:
-  domain_name: short snake_case identifier
-  invariants: 2-6 properties every valid solution must satisfy
-  required_confidence: 2 (use 3 only if independent agreement is needed)
-  oracle_js: JavaScript function verify(fn) → { passed: boolean, reason: string }
-  solution_format: one sentence describing expected function signature and return value
+    // Step 3: compare (check type first, use tolerance for floats)
+    if (Math.abs(got.value - exp.value) >= 0.01) return {passed:false, reason:"..."};
+    return {passed:true, reason:"ok"};
+  }
 
-EXAMPLES (copy this exact JSON structure):
-${examples}
+CRITICAL: Match the problem's EXACT output format. If the problem says
+"Return [S, I, R] as final values", test final values — NOT time series.
+If it says "return dict with S,I,R lists", test the lists.
 
-Return ONLY valid JSON matching the structure above.`.trim();
+Test at least 2 different parameter sets to catch bugs.
+
+${jsRules}
+
+Return JSON: { domain_name, invariants, required_confidence: 2, oracle_js, solution_format }`.trim();
+
+	const promptWithExamples = prompt + `\n\nFORMAT EXAMPLES:\n${exampleDocs}`;
+
+	// Removed old long prompt — use promptWithExamples for LLM calls
 
 	// Try up to 3 times. On failure, include the specific hardening error and demand a stricter oracle.
 	let lastError: unknown;
@@ -321,7 +413,7 @@ IF THE FUNCTION RETURNS A DICT/OBJECT:
 
 FAILING TO ADD THESE CHECKS MEANS YOUR ORACLE WILL PASS BROKEN CODE.`.trimStart();
 
-		const fullPrompt = prompt + retryHint;
+		const fullPrompt = promptWithExamples + retryHint;
 		try {
 			const result = await queryReasoning({ userPrompt: fullPrompt, schema: customDomainSchema, temperature: attempt === 0 ? 0.2 : 0.1, nonce: `oracle-gen-${attempt}-${Date.now()}` });
 			const r = result.response;

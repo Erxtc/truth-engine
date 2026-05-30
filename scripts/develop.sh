@@ -122,19 +122,18 @@ keys.forEach((k, i) => {
                 echo "→ Previous status: $SESSION_STATE"
                 echo ""
                 mkdir -p "$LOGDIR"
+                # Interactive resume — stays alive after loading. No --print.
+                # Print sessions can't be resumed with --print (no deferred marker),
+                # but interactive resume loads the full conversation history.
                 exec claude \
-                    --print \
-                    --output-format stream-json \
-                    --include-partial-messages \
-                    --verbose \
                     --dangerously-skip-permissions \
                     --resume "$SESSION_ID" \
-                    2>&1 | bun run "$ROOT/scripts/stream-filter.ts"
+                    "Let's pick up where we left off and continue working."
             else
                 echo "No session to resume."
                 echo ""
                 echo "→ Trying claude --continue instead..."
-                exec claude --continue --dangerously-skip-permissions
+                exec claude --continue --dangerously-skip-permissions "Let's pick up where we left off."
             fi
             ;;
         --continue|-c)

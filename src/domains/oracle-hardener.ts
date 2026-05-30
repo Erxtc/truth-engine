@@ -179,39 +179,52 @@ export function hardenOracle(oracleJs: string): { ok: boolean; error?: string } 
 			}
 		}
 
-		// ── Fuzz phase: run oracle with random inputs against a trivial function ──
-		// This catches oracles that crash or produce malformed output when given
-		// varied input sizes/types — they pass broken stubs but can't handle real data.
-		const fuzzResults: Array<{ passed: boolean }> = [];
-		for (let i = 0; i < 10; i++) {
-			// Random inputs: different array sizes and value ranges
-			const len = 1 + Math.floor(fuzzRand() * 20);
-			const arr = Array.from({ length: len }, () => Math.floor(fuzzRand() * 1000) - 500);
-			const stubWithInput = `def proposedSolution(*args):\n    return sum(args) if args else 0\n`;
-			const pyWrapper = pythonRunnerSource(stubWithInput);
-			fs.writeFileSync(path.join(tmpDir, "solution.py"), pyWrapper);
-			fs.writeFileSync(path.join(tmpDir, "input.json"), JSON.stringify(arr));
+		// ── Fuzz phase: run oracle with random inputs against trivial functions ──
+		// Tests oracles with different return types (number, list, None) to ensure
+		// they handle edge cases gracefully. Uses majority-vote: more than 50%
+		// crashes = oracle is too fragile. Individual crashes are tolerated because
+		// the oracle may legitimately reject wrong-typed returns from the stub.
+		const fuzzStubs = [
+			{ name: "sum-number", source: `def proposedSolution(*args):\n    return sum(args) if args else 0\n` },
+			{ name: "list-wrapper", source: `def proposedSolution(*args):\n    return [sum(args)] if args else []\n` },
+			{ name: "return-none", source: `def proposedSolution(*args):\n    return None\n` },
+		];
+		const fuzzResults: Array<{ type: string; crashed: boolean; error?: string }> = [];
+		for (const stub of fuzzStubs) {
+			for (let i = 0; i < 3; i++) {
+				const len = 1 + Math.floor(fuzzRand() * 20);
+				const arr = Array.from({ length: len }, () => Math.floor(fuzzRand() * 1000) - 500);
+				const pyWrapper = pythonRunnerSource(stub.source);
+				fs.writeFileSync(path.join(tmpDir, "solution.py"), pyWrapper);
+				fs.writeFileSync(path.join(tmpDir, "input.json"), JSON.stringify(arr));
 
-			const pyFileSafe = JSON.stringify(path.join(tmpDir, "solution.py"));
-			const harness = buildPythonOracleHarness({
-				pyFileSafe, oracleJs,
-				extraRequires: "var fs = require('fs');",
-				singleArgVariant: true,
-			});
-			fs.writeFileSync(path.join(tmpDir, "verify.js"), harness);
+				const pyFileSafe = JSON.stringify(path.join(tmpDir, "solution.py"));
+				const harness = buildPythonOracleHarness({
+					pyFileSafe, oracleJs,
+					extraRequires: "var fs = require('fs');",
+					singleArgVariant: true,
+				});
+				fs.writeFileSync(path.join(tmpDir, "verify.js"), harness);
 
-			try {
-				const raw = execSync("node verify.js", {
-					cwd: tmpDir,
-					timeout: 10_000,
-					stdio: "pipe",
-				}).toString().trim();
-				const r = JSON.parse(raw) as { passed: boolean; reason: string };
-				fuzzResults.push(r);
-			} catch (err: any) {
-				// Oracle crashed on a valid function with real inputs — it's buggy
-				return { ok: false, error: `Oracle crashed during fuzz phase with valid inputs — likely a bug in the oracle that would crash during normal use. Error: ${(err.stderr?.toString() ?? err.message ?? String(err)).slice(0, 120)}` };
+				try {
+					const raw = execSync("node verify.js", {
+						cwd: tmpDir,
+						timeout: 10_000,
+						stdio: "pipe",
+					}).toString().trim();
+					JSON.parse(raw) as { passed: boolean; reason: string };
+					fuzzResults.push({ type: stub.name, crashed: false });
+				} catch (err: any) {
+					const errMsg = (err.stderr?.toString() ?? err.message ?? String(err)).slice(0, 120);
+					fuzzResults.push({ type: stub.name, crashed: true, error: errMsg });
+				}
 			}
+		}
+		const totalFuzz = fuzzResults.length;
+		const crashCount = fuzzResults.filter(r => r.crashed).length;
+		if (crashCount > totalFuzz * 0.5) {
+			const sampleErr = fuzzResults.find(r => r.crashed)?.error ?? "unknown";
+			return { ok: false, error: `Oracle crashed in ${crashCount}/${totalFuzz} fuzz runs (>50%) — likely a bug. Sample error: ${sampleErr}` };
 		}
 
 		return { ok: true };

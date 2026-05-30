@@ -10,6 +10,16 @@ import { JsonFileStore } from "../utils/json-file-store";
 
 const CACHE_PATH = join(import.meta.dir, "..", ".oracle-cache.json");
 
+/**
+ * Oracle cache version — bump this when oracle generation logic changes
+ * (e.g., new hardening checks, different example injection, tolerance changes).
+ * Stale caches from older versions are automatically invalidated.
+ *
+ * History:
+ *   1 — initial version with __teq tolerance-aware equality + problem example injection
+ */
+const ORACLE_CACHE_VERSION = 1;
+
 export interface CachedOracle {
   domain_name: string;
   invariants: string[];
@@ -23,7 +33,7 @@ type CacheData = Record<string, CachedOracle>;
 const store = new JsonFileStore<CacheData>(CACHE_PATH, () => ({}));
 
 function hash(problem: string): string {
-  return createHash("sha256").update(problem.trim()).digest("hex").slice(0, 16);
+  return createHash("sha256").update(`${ORACLE_CACHE_VERSION}:${problem.trim()}`).digest("hex").slice(0, 16);
 }
 
 export function getCachedOracle(problem: string): CachedOracle | null {

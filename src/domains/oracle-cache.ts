@@ -25,7 +25,22 @@ type CacheData = Record<string, CachedOracle>;
 const store = new JsonFileStore<CacheData>(CACHE_PATH, () => ({}));
 
 export function getCachedOracle(problem: string): CachedOracle | null {
-  return store.load()[sha256(problem.trim())] ?? null;
+  const entry = store.load()[sha256(problem.trim())] ?? null;
+  if (!entry) return null;
+
+  // Lightweight sanity check: reject cached oracles with bare bracket-notes
+  // (LLM-generated commentary like `[unit square, interior point excluded]`
+  // that was converted from parenthetical notes by pythonToJs without proper
+  // cleanExpected stripping). These cause JS SyntaxErrors at runtime.
+  // Pattern: `] [natural language text];` or standalone `[natural language];`
+  if (/\]\s*\[[a-zA-Z_]/.test(entry.oracle_js)) {
+    console.warn(`[cache] ⚠ Cached oracle "${entry.domain_name}" contains bare bracket-notes — invalidating cache entry`);
+    delete store.load()[sha256(problem.trim())];
+    store.markDirty();
+    return null;
+  }
+
+  return entry;
 }
 
 export function putCachedOracle(problem: string, oracle: CachedOracle): void {

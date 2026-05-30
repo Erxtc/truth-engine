@@ -796,12 +796,20 @@ export async function runTaskAgent(
   transcript.push(`[setup] Generated WORKSPACE.md`);
 
   const isDocument = workflow.outputType === "document" || workflow.outputType === "analysis";
-  const systemPrompt = cfg._systemPromptOverride ?? buildSystemPrompt(workflow, {
+  let systemPrompt = cfg._systemPromptOverride ?? buildSystemPrompt(workflow, {
     complexity: cfg.complexity,
     supervisorHint: cfg.supervisorHint,
     previousAttemptSummary: cfg.previousAttemptSummary,
     oraclePreloaded: !!cfg.oracleContent,
   });
+
+  // SYSTEM_PROMPT_STRATEGY env var: inject a strategy override for benchmark evaluation.
+  // Used by --evaluate-strategies to test different prompt strategies against problems.
+  const strategyOverride = process.env.SYSTEM_PROMPT_STRATEGY;
+  if (strategyOverride) {
+    systemPrompt = `${systemPrompt}\n\n─── STRATEGY OVERRIDE (${process.env.SYSTEM_PROMPT_STRATEGY_NAME || "unnamed"}) ───\n${strategyOverride}`;
+  }
+
   const systemPromptHash: string = sha256(systemPrompt);
 
   // Build the first user message — include oracle content if available so the

@@ -182,7 +182,9 @@ async function _queryLlmCore(options: {
       const t0 = Date.now();
       const config = options.modelConfig ?? DEFAULT_CONFIG;
       const systemPrompt = options.systemPrompt ?? options.defaultSystemPrompt;
-      const temperature = options.temperature ?? 0.2;
+      // BENCHMARK_TEMPERATURE env var overrides ALL temperatures for deterministic runs
+      const benchTemp = process.env.BENCHMARK_TEMPERATURE;
+      const temperature = benchTemp !== undefined ? parseFloat(benchTemp) : (options.temperature ?? 0.2);
       const maxTokens = options.maxTokens ?? options.defaultMaxTokens;
 
       const messages = options.messages ?? [

@@ -26,11 +26,59 @@
         "calls": 2,
         "tokens": 493,
         "solvedBy": "1-shot"
+      },
+      {
+        "timestamp": "2026-05-30T00:46:14.100Z",
+        "problem": "fibonacci",
+        "systemPromptHash": "335a7840dd2a32a0",
+        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "userPrompt": "Write proposedSolution(n) returning the nth Fibonacci number (fib(0)=0, fib(1)=1). n is a non-negative integer.",
+        "complexity": "trivial",
+        "passed": true,
+        "calls": 2,
+        "tokens": 480,
+        "solvedBy": "1-shot"
+      },
+      {
+        "timestamp": "2026-05-30T00:47:42.292Z",
+        "problem": "fibonacci",
+        "systemPromptHash": "335a7840dd2a32a0",
+        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "userPrompt": "Write proposedSolution(n) returning the nth Fibonacci number (fib(0)=0, fib(1)=1). n is a non-negative integer.",
+        "complexity": "trivial",
+        "passed": false,
+        "calls": 4,
+        "tokens": 0,
+        "solvedBy": "pipeline"
+      },
+      {
+        "timestamp": "2026-05-30T00:48:02.225Z",
+        "problem": "fibonacci",
+        "systemPromptHash": "335a7840dd2a32a0",
+        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "userPrompt": "Write proposedSolution(n) returning the nth Fibonacci number (fib(0)=0, fib(1)=1). n is a non-negative integer.",
+        "complexity": "trivial",
+        "passed": true,
+        "calls": 2,
+        "tokens": 480,
+        "solvedBy": "1-shot"
       }
     ],
     "9a800c4ec4b737d2": [
       {
         "timestamp": "2026-05-30T00:45:38.922Z",
+        "problem": "sorting-js",
+        "systemPromptHash": "335a7840dd2a32a0",
+        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "userPrompt": "Write proposedSolution(arr) that sorts an array of integers in ascending order. Must be a valid JavaScript function. Do NOT use the built-in Array.prototype.sort().",
+        "complexity": "medium",
+        "passed": true,
+        "calls": 2,
+        "tokens": 1279,
+        "solvedBy": "1-shot"
+      },
+      {
+        "timestamp": "2026-05-30T00:46:16.154Z",
         "problem": "sorting-js",
         "systemPromptHash": "335a7840dd2a32a0",
         "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
@@ -53,6 +101,18 @@
         "passed": true,
         "calls": 2,
         "tokens": 1051,
+        "solvedBy": "1-shot"
+      },
+      {
+        "timestamp": "2026-05-30T00:46:18.212Z",
+        "problem": "linear-2x2",
+        "systemPromptHash": "335a7840dd2a32a0",
+        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "userPrompt": "Write proposedSolution(a1,b1,c1, a2,b2,c2) that solves the 2x2 linear system using Cramer's rule. Return a tuple (x, y). Assume unique solution (det ≠ 0).\n\nExample 1: proposedSolution(1, 1, 5, 1, -1, 1) → (3, 2) because x+y=5, x-y=1\nExample 2: proposedSolution(2, 3, 8, 1, 4, 9) → (1, 2) because 2x+3y=8, x+4y=9\nExample 3: proposedSolution(3, -2, 4, 2, 1, 5) → (2, 1) because 3x-2y=4, 2x+y=5",
+        "complexity": "simple",
+        "passed": true,
+        "calls": 2,
+        "tokens": 964,
         "solvedBy": "1-shot"
       }
     ]
@@ -78,32 +138,32 @@
     "539dad36d32cd2b1": {
       "hash": "539dad36d32cd2b1",
       "firstSeen": "2026-05-30T00:45:36.864Z",
-      "lastSeen": "2026-05-30T00:45:36.864Z",
-      "totalUses": 1,
+      "lastSeen": "2026-05-30T00:48:02.225Z",
+      "totalUses": 4,
       "uniqueProblems": 1,
       "problemResults": {
         "fibonacci": {
-          "passes": 1,
-          "failures": 0,
-          "totalCalls": 2,
-          "totalTokens": 493,
+          "passes": 3,
+          "failures": 1,
+          "totalCalls": 10,
+          "totalTokens": 1453,
           "lastPassed": true
         }
       },
-      "passRate": 1
+      "passRate": 0.75
     },
     "9a800c4ec4b737d2": {
       "hash": "9a800c4ec4b737d2",
       "firstSeen": "2026-05-30T00:45:38.922Z",
-      "lastSeen": "2026-05-30T00:45:38.922Z",
-      "totalUses": 1,
+      "lastSeen": "2026-05-30T00:46:16.154Z",
+      "totalUses": 2,
       "uniqueProblems": 1,
       "problemResults": {
         "sorting-js": {
-          "passes": 1,
+          "passes": 2,
           "failures": 0,
-          "totalCalls": 2,
-          "totalTokens": 1279,
+          "totalCalls": 4,
+          "totalTokens": 2558,
           "lastPassed": true
         }
       },
@@ -112,23 +172,23 @@
     "2858256b820b3de0": {
       "hash": "2858256b820b3de0",
       "firstSeen": "2026-05-30T00:45:47.547Z",
-      "lastSeen": "2026-05-30T00:45:47.547Z",
-      "totalUses": 1,
+      "lastSeen": "2026-05-30T00:46:18.212Z",
+      "totalUses": 2,
       "uniqueProblems": 1,
       "problemResults": {
         "linear-2x2": {
-          "passes": 1,
+          "passes": 2,
           "failures": 0,
-          "totalCalls": 2,
-          "totalTokens": 1051,
+          "totalCalls": 4,
+          "totalTokens": 2015,
           "lastPassed": true
         }
       },
       "passRate": 1
     }
   },
-  "currentHash": "335a7840dd2a32a0",
+  "currentHash": "e407c881bde8fb19",
   "consistencyVerdicts": {},
   "trustedThreshold": 2,
-  "updatedAt": "2026-05-30T00:45:47.613Z"
+  "updatedAt": "2026-05-30T00:48:03.881Z"
 }

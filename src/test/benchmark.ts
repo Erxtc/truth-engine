@@ -105,10 +105,12 @@ function runPipeline(problem: TestProblem, nonce?: string): { passed: boolean; c
     const descEscaped = shellEscape(problem.description);
     // Fresh mode: pass a nonce to bypass LLM response cache (forces fresh API calls)
     const nonceEnv = nonce ? `LLM_NONCE=${nonce}` : "";
+    // Fresh mode: bypass LLM response cache for the subprocess
+    const cacheMode = nonce ? { CACHE_MODE: "off" } : {};
     const nonceEnvVar = nonce ? { LLM_NONCE: nonce } : {};
     const output = execSync(
       `${nonceEnv} ${langEnv} PROBLEM_COMPLEXITY=${problem.complexity} DOMAIN=${domain} PROBLEM_DESC="${descEscaped}" NO_UI=1 bun run ${ROOT}/src/main.ts`,
-      { cwd: ROOT, timeout: 300_000, encoding: "utf-8", env: { ...process.env, DOMAIN: domain, PROBLEM_DESC: problem.description, PROBLEM_COMPLEXITY: problem.complexity, NO_UI: "1", PROJECT_TESTS: projectTestsJson, PROBLEM_LANGUAGE: problem.language || "", ...nonceEnvVar } }
+      { cwd: ROOT, timeout: 300_000, encoding: "utf-8", env: { ...process.env, DOMAIN: domain, PROBLEM_DESC: problem.description, PROBLEM_COMPLEXITY: problem.complexity, NO_UI: "1", PROJECT_TESTS: projectTestsJson, PROBLEM_LANGUAGE: problem.language || "", ...nonceEnvVar, ...cacheMode } }
     );
     const duration = Date.now() - t0;
 
@@ -153,7 +155,8 @@ let isConsistency = false;
 let isCrossPrompt = false;
 let skipTrusted = true; // default: skip problems with >2 consistent passes
 let showPromptReport = false;
-let isFresh = false;   // bypass LLM response cache
+let isFresh = false;            // bypass LLM response cache
+let isEvaluateStrategies = false; // run each problem with each prompt strategy
 let showConsistencyReport = false;
 let showWhatIf = false;
 let showTrends = false;
@@ -175,6 +178,7 @@ function getProblems(args: string[]): { problems: TestProblem[]; label: string }
     else if (arg === "--consistency-report") { showConsistencyReport = true; }
     else if (arg === "--what-if") { showWhatIf = true; }
     else if (arg === "--trends") { showTrends = true; }
+    else if (arg === "--evaluate-strategies") { isEvaluateStrategies = true; }
     else if (arg.startsWith("--tier=")) { mode = "tier"; tierFilter = arg.slice(7); }
     else if (arg.startsWith("--")) continue;
     else names.push(arg);
@@ -249,7 +253,12 @@ async function runConsistencyCheck(problems: TestProblem[], runCount: number): P
     const allPassed = runs.every(r => r.passed);
     const allFailed = runs.every(r => !r.passed);
     const stable = allPassed || allFailed;
-    const verdict = allPassed ? "stable-pass" : allFailed ? "stable-fail" : "flaky";
+    const verdict = allPassed ? "stable-pass" as const : allFailed ? "stable-fail" as const : "flaky" as const;
+
+    // Persist consistency verdict for cross-session flakiness detection
+    const passCount = runs.filter(r => r.passed).length;
+    const failCount = runs.filter(r => !r.passed).length;
+    recordConsistencyVerdict(p.name, verdict, runs.length, passCount, failCount);
 
     results.push({ name: p.name, complexity: p.complexity, runs, stable, verdict });
   }
@@ -562,7 +571,7 @@ async function main() {
 
 
   // ── Standalone consistency report ───────────────────────────────────────
-  if (showConsistencyReport && problems.length === 0) {
+  if (showConsistencyReport) {
     const verdicts = getConsistencyVerdicts();
     if (Object.keys(verdicts).length === 0) {
       console.log("No consistency verdicts recorded yet. Run --consistency first.");
@@ -573,13 +582,13 @@ async function main() {
   }
 
   // ── Standalone what-if analysis ─────────────────────────────────────────
-  if (showWhatIf && problems.length === 0) {
+  if (showWhatIf) {
     console.log(formatWhatIfReport(generateWhatIfAnalysis()));
     return;
   }
 
   // ── Standalone trends report ────────────────────────────────────────────
-  if (showTrends && problems.length === 0) {
+  if (showTrends) {
     console.log(formatImprovementTrends(getImprovementTrends()));
     return;
   }

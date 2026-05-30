@@ -920,7 +920,7 @@ export function formatImprovementTrends(trends: ProblemTrend[]): string {
     "flaky": trends.filter(t => t.passTrend === "flaky"),
     "improved-to-pass": trends.filter(t => t.passTrend === "improved-to-pass"),
     "always-pass": trends.filter(t => t.passTrend === "always-pass"),
-    "new": trends.filter(t => t.passTrend === "new"),
+    "new": trends.filter(t => t.trend === "new"),
   };
 
   if (byPassTrend["always-fail"].length > 0) {

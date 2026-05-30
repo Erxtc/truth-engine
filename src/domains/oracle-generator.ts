@@ -84,8 +84,13 @@ export function buildOracleExamples(): string {
 
 // ── Oracle sanitization ───────────────────────────────────────────────────
 
-/** Replace non-JSON-serializable JS literals so oracle comparisons don't blow up. */
+/** Replace non-JSON-serializable JS literals so oracle comparisons don't blow up.
+ *  Also strips bare bracket-notes (LLM-generated comments missing //) that
+ *  would cause SyntaxErrors. */
 export function sanitizeOracleJs(js: string): string {
+	// Strip bare bracket-notes: JS like `][text note]` where text starts with
+	// a letter (natural language, not array indices). NEVER valid JS outside strings.
+	js = js.replace(/\]\s*\[([a-zA-Z_][^\]]*)\](?=\s*[;,\n)\}\]])/g, "]");
 	return js
 		.replace(/\bNaN\b/g, "null")
 		.replace(/\bundefined\b/g, "null");
@@ -162,22 +167,27 @@ function parseProblemExamples(problem: string): ParsedExample[] {
   return examples;
 }
 
-/** Strip trailing commentary from expected values: "because ...", "since ...", parenthetical notes, "or equivalent X", etc. */
+/** Strip trailing commentary from expected values: "because ...", "since ...", parenthetical notes, "or equivalent X", etc.
+ *  ORDER MATTERS: parenthetical stripping must come BEFORE em-dash stripping.
+ *  If em-dash is stripped first and a parenthetical note contains an em-dash
+ *  (e.g., "(collinear, endpoints only — interior point excluded)"), the dash
+ *  regex cuts off the closing paren, leaving "(collinear, endpoints only" —
+ *  which pythonToJs then converts to "[collinear, endpoints only" → broken JS. */
 function cleanExpected(raw: string): string {
-  // Strip following patterns (greedy, from first occurrence):
-  //   "or equivalent X" — alternative answer descriptions
-  //   " — ..." / " – ..." — em/en dash followed by commentary
-  //   "; because ..." / ", since ..." / "where ..." — explanatory clauses
   let result = raw
     .replace(/\s*or\s+equivalent\b.*$/i, "")
-    .replace(/\s*[—–].*$/, "")
     .replace(/[;,]?\s*(?:because|since|where|\(i\.e\.)[^)]*\)?.*$/i, "")
     .replace(/\.$/, "");
-  // Strip trailing parenthetical notes: match balanced/unanchored parens at end of string
-  // that contain only natural-language text (no brackets, braces, or quotes).
+  // Strip trailing parenthetical notes BEFORE em-dash stripping so that
+  // parentheticals containing dashes get fully consumed as one unit.
   result = result.replace(/\s*\(([^)[\]{}"']*)\)\s*$/, "");
-  // Try again with nested parens stripped first (for double-paren cases)
+  // Second pass: catch parentheticals that survived the first regex
   result = result.replace(/\s*\(([^[\]{}"']+)\)\s*$/, "");
+  // Strip bracket-style notes (LLM-generated comments missing //)
+  // e.g. "[[0,0],[1,0]] [unit square, interior point excluded]"
+  result = result.replace(/\s*\[([a-zA-Z_][^\[\]{}"']*)\]\s*$/, "");
+  // Em/en dash stripping LAST — only bare dashes outside parens survive to here
+  result = result.replace(/\s*[—–].*$/, "");
   return result.trim();
 }
 

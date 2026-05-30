@@ -28,6 +28,7 @@ PROMPTS_FILE="$ROOT/prompts.json"
 LOGDIR="$ROOT/logs/develop"
 SYNC=true
 BACKGROUND=false
+PRINT_MODE=false
 INPUT=""
 
 # ── Parse flags ─────────────────────────────────────────────────────────────
@@ -157,23 +158,34 @@ keys.forEach((k, i) => {
             echo "   Cleaned $CLEANED session state files."
             exit 0
             ;;
+        --print|-p)
+            PRINT_MODE=true
+            shift
+            ;;
         --help|-h)
-            echo "Usage: bun develop [--bg] [--no-pull] [NAME|N|\"prompt\"|--list|--watch|--status|--resume|--continue]"
+            echo "Usage: bun develop [--bg|--print] [NAME|N|\"prompt\"|--list|--watch|--status|--resume|--continue]"
             echo ""
             echo "  bun develop              Interactive claude session"
-            echo "  bun develop clean        Run the 'clean' prompt"
-            echo "  bun develop fix          Run the 'fix' prompt"
+            echo "  bun develop strategize   Step back, think architecturally"
+            echo "  bun develop execute      Dive in, implement, improve"
             echo "  bun develop N            Run prompt at index N (1-based)"
-            echo "  bun develop \"task\"       Run with custom prompt"
+            echo "  bun develop \"task\"       Run with custom prompt (interactive)"
             echo "  bun develop --list       List all named prompts"
             echo "  bun develop --status     Show all background runs + their state"
             echo "  bun develop --watch      Tail the latest background run"
             echo "  bun develop --resume     Resume last crashed session"
             echo "  bun develop --continue   Continue most recent conversation"
             echo ""
-            echo "Flags:"
-            echo "  --bg                     Run in background, log to logs/develop/"
-            echo "  --no-pull                Skip git pull before starting"
+            echo "Modes:"
+            echo "  (default)                Interactive — task runs, then session stays alive"
+            echo "                           Type follow-up prompts to keep iterating"
+            echo "  --print, -p              One-shot — streams output, exits when done"
+            echo "  --bg                     Background — logs to file, fire and forget"
+            echo ""
+            echo "Iteration flow:"
+            echo "  bun develop strategize   ← step back, think architecturally"
+            echo "  (type follow-up in session)"
+            echo "  bun develop execute      ← dive in, implement, improve"
             exit 0
             ;;
         --*)
@@ -265,11 +277,16 @@ keys.forEach(k => {
 })
 "
     echo "╠══════════════════════════════════════════════════════════════╣"
-    echo "║  Commands:  bun develop --status   (see all bg runs)       ║"
-    echo "║             bun develop --watch    (tail latest)           ║"
-    echo "║             bun develop --bg NAME  (fire and forget)       ║"
-    echo "║             bun develop --list     (all prompts)           ║"
-    echo "║             bun develop --resume   (recover from crash)    ║"
+    echo "║  Iterate:   bun develop strategize  (step back, think)     ║"
+    echo "║             bun develop execute     (dive in, build)       ║"
+    echo "║             ...or stay in session and type follow-ups       ║"
+    echo "╠══════════════════════════════════════════════════════════════╣"
+    echo "║  Modes:     bun develop --print X   (one-shot streaming)   ║"
+    echo "║             bun develop --bg NAME   (fire and forget)      ║"
+    echo "║             bun develop --resume    (recover from crash)   ║"
+    echo "║             bun develop --status    (see all bg runs)      ║"
+    echo "║             bun develop --watch     (tail latest)          ║"
+    echo "║             bun develop --list      (all prompts)          ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
 
     # Show fleet status if anything is running
@@ -382,13 +399,14 @@ if $BACKGROUND; then
             echo "   ⚡ Resume with:  bun develop --resume"
         fi
     fi
-else
-    # ── Foreground mode ─────────────────────────────────────────────────────
+elif $PRINT_MODE; then
+    # ── Print mode (one-shot streaming) ───────────────────────────────────
     SESSION_ID=$(bun -e "console.log(crypto.randomUUID())")
     echo "$SESSION_ID" > "$LOGDIR/last-session-state.txt"
     echo "CRASHED:$(date +%s)" > "$LOGDIR/last-session-status.txt"
     echo "→ Task: $PROMPT"
     echo "→ Session: $SESSION_ID"
+    echo "→ Mode: one-shot (--print)"
     echo ""
 
     START=$(date +%s)
@@ -423,4 +441,22 @@ else
     fi
     mini_status
     exit "$RC"
+else
+    # ── Foreground mode (interactive — stays alive) ───────────────────────
+    SESSION_ID=$(bun -e "console.log(crypto.randomUUID())")
+    echo "$SESSION_ID" > "$LOGDIR/last-session-state.txt"
+    echo "CRASHED:$(date +%s)" > "$LOGDIR/last-session-status.txt"
+    echo "→ Task: $PROMPT"
+    echo "→ Session: $SESSION_ID"
+    echo "→ Mode: interactive (session stays alive after task)"
+    echo "→ Type your next prompt to continue, or Ctrl-C to exit"
+    echo ""
+
+    # Interactive mode: exec replaces the shell, session persists naturally.
+    # User can keep iterating — type new prompts after each task completes.
+    exec claude \
+        --dangerously-skip-permissions \
+        --system-prompt "$SYSTEM_PROMPT" \
+        --session-id "$SESSION_ID" \
+        "$FULL_PROMPT"
 fi

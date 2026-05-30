@@ -200,18 +200,6 @@
         "calls": 3,
         "tokens": 0,
         "solvedBy": "repair"
-      },
-      {
-        "timestamp": "2026-05-30T00:58:08.238Z",
-        "problem": "heat-transfer",
-        "systemPromptHash": "335a7840dd2a32a0",
-        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
-        "userPrompt": "Write proposedSolution(T_hot, T_cold, k, L, A) that calculates the steady-state heat transfer rate Q through a flat wall using Fourier's law: Q = k * A * (T_hot - T_cold) / L. All inputs are positive floats. Return Q as a float (no units required).\n\nExample 1: proposedSolution(100, 20, 0.04, 0.1, 2) → 64.0 (k=0.04 W/mK brick, L=0.1m, A=2m², ΔT=80K: Q = 0.04*2*80/0.1 = 64)\nExample 2: proposedSolution(200, 50, 401, 0.5, 0.01) → 1203.0 (k=401 copper, L=0.5m, A=0.01m², ΔT=150K)\nExample 3: proposedSolution(50, 10, 0.8, 2, 3) → 48.0",
-        "complexity": "trivial",
-        "passed": true,
-        "calls": 3,
-        "tokens": 2046,
-        "solvedBy": "repair"
       }
     ],
     "ba8c145da6fcb0ce": [
@@ -226,23 +214,11 @@
         "calls": 2,
         "tokens": 0,
         "solvedBy": "1-shot"
-      },
-      {
-        "timestamp": "2026-05-30T00:58:16.802Z",
-        "problem": "ph-calculation",
-        "systemPromptHash": "335a7840dd2a32a0",
-        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
-        "userPrompt": "Write proposedSolution(h_concentration) that calculates pH from hydrogen ion concentration: pH = -log10([H+]). h_concentration is a positive float (mol/L). Return pH rounded to 2 decimal places.\n\nExample 1: proposedSolution(0.0001) → 4.0 (pH of 1e-4 M HCl = 4.0)\nExample 2: proposedSolution(1.0e-7) → 7.0 (pure water)\nExample 3: proposedSolution(0.01) → 2.0",
-        "complexity": "trivial",
-        "passed": true,
-        "calls": 2,
-        "tokens": 6402,
-        "solvedBy": "1-shot"
       }
     ],
     "cf81bcd9d1c98077": [
       {
-        "timestamp": "2026-05-30T01:01:16.550Z",
+        "timestamp": "2026-05-30T00:58:48.273Z",
         "problem": "buffer-ph",
         "systemPromptHash": "335a7840dd2a32a0",
         "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
@@ -250,8 +226,78 @@
         "complexity": "trivial",
         "passed": true,
         "calls": 14,
-        "tokens": 6820,
+        "tokens": 12122,
         "solvedBy": "supervisor-retry"
+      }
+    ],
+    "3745cb543e849f02": [
+      {
+        "timestamp": "2026-05-30T00:58:50.337Z",
+        "problem": "redox-half-reactions",
+        "systemPromptHash": "335a7840dd2a32a0",
+        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "userPrompt": "Write proposedSolution(half1, half2) that takes two half-reaction tuples and returns the cell potential E_cell in volts. Each tuple is (species, reduced_form, electrons, E0). The half with the higher (more positive) E0 is the cathode (reduction); the lower E0 is the anode (oxidation). E_cell = E0_cathode - E0_anode.\n\nExample 1: proposedSolution((\"Zn2+\", \"Zn\", 2, -0.76), (\"Cu2+\", \"Cu\", 2, 0.34)) → 1.10 (Cu E0=0.34 is cathode, Zn E0=-0.76 is anode: 0.34 - (-0.76) = 1.10)\nExample 2: proposedSolution((\"Fe2+\", \"Fe\", 2, -0.44), (\"Ag+\", \"Ag\", 1, 0.80)) → 1.24 (Ag E0=0.80 is cathode, Fe E0=-0.44 is anode: 0.80 - (-0.44) = 1.24)\nExample 3: proposedSolution((\"Mg2+\", \"Mg\", 2, -2.37), (\"2H+\", \"H2\", 2, 0.00)) → 2.37 (H E0=0.00 is cathode, Mg E0=-2.37 is anode: 0.00 - (-2.37) = 2.37)",
+        "complexity": "simple",
+        "passed": true,
+        "calls": 2,
+        "tokens": 1048,
+        "solvedBy": "1-shot"
+      }
+    ],
+    "5e08af1a35b9a52b": [
+      {
+        "timestamp": "2026-05-30T00:59:40.833Z",
+        "problem": "stoichiometry",
+        "systemPromptHash": "335a7840dd2a32a0",
+        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "userPrompt": "Write proposedSolution(balanced_eq, mass_given, molar_mass_given, target_species) that calculates the mass of a target species from a balanced chemical equation and given mass. The equation is a string like \"2H2 + O2 -> 2H2O\". mass_given is the mass in grams of the first reactant. molar_mass_given is g/mol of the first reactant. target_species is the name of the product whose mass to calculate (e.g., \"H2O\"). Return mass in grams rounded to 2 decimal places.\n\nExample 1: proposedSolution(\"2H2 + O2 -> 2H2O\", 4.0, 2.0, \"H2O\") → 36.0 (4g H2 = 2 mol H2 → 2 mol H2O * 18 g/mol = 36g H2O)\nExample 2: proposedSolution(\"N2 + 3H2 -> 2NH3\", 28.0, 28.0, \"NH3\") → 34.0 (1 mol N2 → 2 mol NH3 * 17 = 34)\nExample 3: proposedSolution(\"CH4 + 2O2 -> CO2 + 2H2O\", 16.0, 16.0, \"CO2\") → 44.0 (1 mol CH4 → 1 mol CO2 * 44 = 44g)",
+        "complexity": "simple",
+        "passed": true,
+        "calls": 8,
+        "tokens": 16181,
+        "solvedBy": "task-agent"
+      }
+    ],
+    "b184eaa6a211c3ce": [
+      {
+        "timestamp": "2026-05-30T01:05:09.632Z",
+        "problem": "sir-model",
+        "systemPromptHash": "335a7840dd2a32a0",
+        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "userPrompt": "Write proposedSolution(S0, I0, R0, beta, gamma, days) that runs a deterministic SIR compartmental model. Use Euler integration with daily time steps (Δt = 1). The SIR differential equations are:\n\ndS/dt = -β * S * I / N\ndI/dt = β * S * I / N - γ * I\ndR/dt = γ * I\n\nwhere N = S + I + R is the total population (N stays constant). Using Euler integration:\n\nS_next = S - β * S * I / N\nI_next = I + β * S * I / N - γ * I\nR_next = R + γ * I\n\nReturn a dict with keys \"S\", \"I\", \"R\" — each is a list of length days+1 with the daily compartment values (doubles). Round all values to 1 decimal place.\n\nExample 1: proposedSolution(1000, 1, 0, 0.3, 0.1, 5) → day 0: 1000/1/0; day 1: S=999.7, I=1.1, R=0.1; etc.\nExample 2: proposedSolution(100, 5, 0, 0.5, 0.2, 3)",
+        "complexity": "medium",
+        "passed": false,
+        "calls": 24,
+        "tokens": 6132,
+        "solvedBy": "pipeline"
+      }
+    ],
+    "df4398f45a60bc1d": [
+      {
+        "timestamp": "2026-05-30T01:05:23.047Z",
+        "problem": "gillespie-sir",
+        "systemPromptHash": "e407c881bde8fb19",
+        "systemPromptPreview": "[hash: e407c881bde8fb19]",
+        "userPrompt": "Write proposedSolution(S0, I0, R0, beta, gamma, t_max) implementing the Gillespie algorithm (stochastic simulation algorithm) for the SIR model with infection rate beta*S*I and recovery rate gamma*I. Return dict with keys \"t\" (event times list) and \"S\", \"I\", \"R\" (compartment values at each event time). Initial state at t=0 must be included as the first entry. Seed the random number generator with 42 at the start to make results reproducible.\n\nExample 1: proposedSolution(100, 1, 0, 0.01, 0.1, 10) — Return compartments at every event until t > 10\nExample 2: proposedSolution(50, 5, 0, 0.02, 0.1, 5)",
+        "complexity": "hard",
+        "passed": true,
+        "calls": 2,
+        "tokens": 8006,
+        "solvedBy": "1-shot"
+      }
+    ],
+    "bacddd1705ad2fc0": [
+      {
+        "timestamp": "2026-05-30T01:05:49.157Z",
+        "problem": "cournot-duopoly",
+        "systemPromptHash": "335a7840dd2a32a0",
+        "systemPromptPreview": "[hash: 335a7840dd2a32a0]",
+        "userPrompt": "Write proposedSolution(a, b, c1, c2) that solves a Cournot duopoly. Market demand: P = a - b*Q where Q = q1 + q2. Firm i's cost: C_i = c_i * q_i. Firm i maximizes π_i = P*q_i - c_i*q_i taking q_j as given. Solve the system of FOCs for q1, q2. Return tuple (q1, q2, P, π1, π2). All values to 2 decimal places. Input constraints: a, b > 0, c1, c2 ≥ 0, a > max(c1, c2).\n\nExample 1: proposedSolution(100, 1, 10, 10) → (30.0, 30.0, 40.0, 900.0, 900.0) (symmetric: q_i = (a-c)/(3b) = 30, P = a - 2bq = 40, π = 900)\nExample 2: proposedSolution(100, 1, 10, 20) → (33.33, 23.33, 43.33, 1111.11, 544.44)\nExample 3: proposedSolution(50, 2, 5, 5) → (7.5, 7.5, 20.0, 112.5, 112.5)",
+        "complexity": "simple",
+        "passed": true,
+        "calls": 2,
+        "tokens": 6074,
+        "solvedBy": "1-shot"
       }
     ]
   },
@@ -327,15 +373,15 @@
     "736bd7a11542cbbb": {
       "hash": "736bd7a11542cbbb",
       "firstSeen": "2026-05-30T00:56:04.106Z",
-      "lastSeen": "2026-05-30T00:58:08.238Z",
-      "totalUses": 2,
+      "lastSeen": "2026-05-30T00:56:04.106Z",
+      "totalUses": 1,
       "uniqueProblems": 1,
       "problemResults": {
         "heat-transfer": {
-          "passes": 2,
+          "passes": 1,
           "failures": 0,
-          "totalCalls": 6,
-          "totalTokens": 2046,
+          "totalCalls": 3,
+          "totalTokens": 0,
           "lastPassed": true
         }
       },
@@ -344,15 +390,15 @@
     "ba8c145da6fcb0ce": {
       "hash": "ba8c145da6fcb0ce",
       "firstSeen": "2026-05-30T00:56:12.745Z",
-      "lastSeen": "2026-05-30T00:58:16.802Z",
-      "totalUses": 2,
+      "lastSeen": "2026-05-30T00:56:12.745Z",
+      "totalUses": 1,
       "uniqueProblems": 1,
       "problemResults": {
         "ph-calculation": {
-          "passes": 2,
+          "passes": 1,
           "failures": 0,
-          "totalCalls": 4,
-          "totalTokens": 6402,
+          "totalCalls": 2,
+          "totalTokens": 0,
           "lastPassed": true
         }
       },
@@ -360,8 +406,8 @@
     },
     "cf81bcd9d1c98077": {
       "hash": "cf81bcd9d1c98077",
-      "firstSeen": "2026-05-30T01:01:16.550Z",
-      "lastSeen": "2026-05-30T01:01:16.550Z",
+      "firstSeen": "2026-05-30T00:58:48.273Z",
+      "lastSeen": "2026-05-30T00:58:48.273Z",
       "totalUses": 1,
       "uniqueProblems": 1,
       "problemResults": {
@@ -369,7 +415,92 @@
           "passes": 1,
           "failures": 0,
           "totalCalls": 14,
-          "totalTokens": 6820,
+          "totalTokens": 12122,
+          "lastPassed": true
+        }
+      },
+      "passRate": 1
+    },
+    "3745cb543e849f02": {
+      "hash": "3745cb543e849f02",
+      "firstSeen": "2026-05-30T00:58:50.337Z",
+      "lastSeen": "2026-05-30T00:58:50.337Z",
+      "totalUses": 1,
+      "uniqueProblems": 1,
+      "problemResults": {
+        "redox-half-reactions": {
+          "passes": 1,
+          "failures": 0,
+          "totalCalls": 2,
+          "totalTokens": 1048,
+          "lastPassed": true
+        }
+      },
+      "passRate": 1
+    },
+    "5e08af1a35b9a52b": {
+      "hash": "5e08af1a35b9a52b",
+      "firstSeen": "2026-05-30T00:59:40.833Z",
+      "lastSeen": "2026-05-30T00:59:40.833Z",
+      "totalUses": 1,
+      "uniqueProblems": 1,
+      "problemResults": {
+        "stoichiometry": {
+          "passes": 1,
+          "failures": 0,
+          "totalCalls": 8,
+          "totalTokens": 16181,
+          "lastPassed": true
+        }
+      },
+      "passRate": 1
+    },
+    "b184eaa6a211c3ce": {
+      "hash": "b184eaa6a211c3ce",
+      "firstSeen": "2026-05-30T01:05:09.632Z",
+      "lastSeen": "2026-05-30T01:05:09.632Z",
+      "totalUses": 1,
+      "uniqueProblems": 1,
+      "problemResults": {
+        "sir-model": {
+          "passes": 0,
+          "failures": 1,
+          "totalCalls": 24,
+          "totalTokens": 6132,
+          "lastPassed": false
+        }
+      },
+      "passRate": 0
+    },
+    "df4398f45a60bc1d": {
+      "hash": "df4398f45a60bc1d",
+      "firstSeen": "2026-05-30T01:05:23.047Z",
+      "lastSeen": "2026-05-30T01:05:23.047Z",
+      "totalUses": 1,
+      "uniqueProblems": 1,
+      "problemResults": {
+        "gillespie-sir": {
+          "passes": 1,
+          "failures": 0,
+          "totalCalls": 2,
+          "totalTokens": 8006,
+          "lastPassed": true
+        }
+      },
+      "passRate": 1
+    },
+    "bacddd1705ad2fc0": {
+      "hash": "bacddd1705ad2fc0",
+      "firstSeen": "2026-05-30T01:05:49.157Z",
+      "lastSeen": "2026-05-30T01:05:49.157Z",
+      "totalUses": 1,
+      "uniqueProblems": 1,
+      "problemResults": {
+        "cournot-duopoly": {
+          "passes": 1,
+          "failures": 0,
+          "totalCalls": 2,
+          "totalTokens": 6074,
           "lastPassed": true
         }
       },
@@ -379,5 +510,5 @@
   "currentHash": "335a7840dd2a32a0",
   "consistencyVerdicts": {},
   "trustedThreshold": 2,
-  "updatedAt": "2026-05-30T01:01:40.251Z"
+  "updatedAt": "2026-05-30T01:06:07.002Z"
 }

@@ -142,6 +142,13 @@ interface ParsedExample {
   label: string;
 }
 
+/** Reject expected values that are clearly natural language, not data.
+ *  Valid values: numbers, arrays, objects, strings, booleans, null/None.
+ *  Reject: lowercase word sequences ("ing the nth Fibonacci number"). */
+function isPlausibleValue(text: string): boolean {
+  return /^\s*([[{"'\-]|\d|true\b|false\b|null\b|None\b|Infinity\b)/.test(text);
+}
+
 /** Parse example assertions from problem description (e.g. "Example 1: f(X) → Y"). */
 function parseProblemExamples(problem: string): ParsedExample[] {
   const examples: ParsedExample[] = [];
@@ -152,6 +159,7 @@ function parseProblemExamples(problem: string): ParsedExample[] {
     const rawArgs = (match[2] || "").trim();
     const rawExpected = cleanExpected((match[3] || "").trim());
     if (!rawArgs || !rawExpected) continue;
+    if (!isPlausibleValue(rawExpected)) continue;
     examples.push({
       args: pythonToJs(rawArgs),
       expected: pythonToJs(rawExpected),
@@ -165,6 +173,7 @@ function parseProblemExamples(problem: string): ParsedExample[] {
       const rawArgs = (m[1] || "").trim();
       const rawExpected = cleanExpected((m[2] || "").trim());
       if (!rawArgs || !rawExpected) continue;
+      if (!isPlausibleValue(rawExpected)) continue;
       examples.push({ args: pythonToJs(rawArgs), expected: pythonToJs(rawExpected), label: `problem-example-${count++}` });
     }
   }

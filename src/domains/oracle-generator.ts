@@ -92,6 +92,18 @@ function sanitizeOracleJs(js: string): string {
 		.replace(/\bundefined\b/g, "null");
 }
 
+/** Validate that a JS oracle string is syntactically correct.
+ *  Returns { ok: true } or { ok: false, error: string } for the LLM retry loop. */
+function validateOracleSyntax(oracleJs: string): { ok: boolean; error?: string } {
+  try {
+    new Function('"use strict"; ' + oracleJs + ';');
+    return { ok: true };
+  } catch (err: any) {
+    const msg = err.message || String(err);
+    return { ok: false, error: 'Oracle JS syntax error: ' + msg.slice(0, 200) };
+  }
+}
+
 // ── Oracle auto-repair ────────────────────────────────────────────────────
 
 /**
@@ -419,6 +431,14 @@ FAILING TO ADD THESE CHECKS MEANS YOUR ORACLE WILL PASS BROKEN CODE.`.trimStart(
 			const r = result.response;
 			const oracleJs = sanitizeOracleJs(transpileToJs(r.oracle_js));
 			lastOracleJs = oracleJs;
+
+		// Syntax validation: reject oracles that cannot compile before hardening
+		const syntaxCheck = validateOracleSyntax(oracleJs);
+		if (!syntaxCheck.ok) {
+			console.warn(`[auto-detect] Oracle syntax invalid: ${syntaxCheck.error}`);
+			lastError = new Error(syntaxCheck.error!);
+			continue;
+		}
 
 			// Inject problem-statement examples as ground-truth checks BEFORE hardening.
 			// This catches oracles that only have weak structural checks — the deterministic

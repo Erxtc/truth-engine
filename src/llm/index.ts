@@ -9,11 +9,6 @@ const REASONING_MODEL = DEFAULT_CONFIG;
 
 // ── Model tier ──────────────────────────────────────────────────────────────
 
-/** Pipeline behavior tier based on the best available model's reasoning capability.
- *  Tier 1 (reasoning < 0.6): stripped-down pipeline for local 7B models
- *  Tier 2 (reasoning 0.6–0.9): full pipeline — context builder, multi-branch, exploration
- *  Tier 3 (reasoning > 0.9):   maximum capability — critics, consensus, deep search
- */
 export type ModelTier = 1 | 2 | 3;
 
 let _cachedTier: ModelTier | null = null;
@@ -23,11 +18,7 @@ export async function getModelTier(): Promise<ModelTier> {
     try {
         const registry = await getRegistry();
         const models = registry.getModels();
-        if (models.length === 0) {
-            _cachedTier = 1;
-            return 1;
-        }
-        // Use the best available model's reasoning as the tier ceiling
+        if (models.length === 0) { _cachedTier = 1; return 1; }
         const bestReasoning = Math.max(...models.map(m => m.capabilities.reasoning));
         if (bestReasoning >= 0.9)  _cachedTier = 3;
         else if (bestReasoning >= 0.6) _cachedTier = 2;
@@ -38,130 +29,90 @@ export async function getModelTier(): Promise<ModelTier> {
     return _cachedTier;
 }
 
-// ── Role → TaskProfile mapping ──────────────────────────────────────────────
+// ── Role-based routing ──────────────────────────────────────────────────────
+
+const META_ROLES = new Set(["supervisor", "prompter"]);
+const IMPL_ROLES = new Set(["repair", "baseline"]);
 
 function roleToProfile(role: string): TaskProfile {
     switch (role) {
-        case "supervisor":
-            return { type: "reasoning", priority: "quality", requiresJsonMode: true };
-        case "repair":
-            return { type: "code-generation", priority: "speed", requiresJsonMode: true };
-        case "baseline":
-            return { type: "baseline", priority: "quality", requiresJsonMode: true };
-        case "prompter":
-            // Prompter is used for oracle generation AND code generation.
-            // Raw mode is the default; the quality/speed split depends on context.
-            return { type: "code-generation", priority: "quality", requiresRawMode: true };
-        default:
-            return { type: "reasoning", priority: "speed", requiresJsonMode: true };
+        case "supervisor": return { type: "reasoning", priority: "quality", requiresJsonMode: true };
+        case "repair":     return { type: "code-generation", priority: "speed", requiresJsonMode: true };
+        case "baseline":   return { type: "baseline", priority: "quality", requiresJsonMode: true };
+        case "prompter":   return { type: "code-generation", priority: "quality", requiresRawMode: true };
+        default:           return { type: "reasoning", priority: "speed", requiresJsonMode: true };
     }
 }
 
-/** Roles that do meta-cognition (supervision, oracle generation).
- *  These are typically routed to stronger models; overridden by MODEL_OVERRIDE_META. */
-const META_ROLES = new Set(["supervisor", "prompter"]);
-
-/** Roles that do implementation (code generation, repair, baseline).
- *  These can run on weaker/cheaper models; overridden by MODEL_OVERRIDE_IMPL. */
-const IMPL_ROLES = new Set(["repair", "baseline"]);
-
-/** Resolve the best available model for a given agent role.
- *
- *  Override precedence (first match wins):
- *    1. MODEL_OVERRIDE_META  — for meta-cognitive roles (supervisor, prompter)
- *    2. MODEL_OVERRIDE_IMPL  — for implementation roles (repair, baseline)
- *    3. MODEL_OVERRIDE       — global override for ALL roles
- *
- *  Without overrides, routes via registry capability scoring.
- *  Falls back to REASONING_MODEL if the registry is unavailable. */
-async function resolveModel(role: string): Promise<LlamaModelConfig> {
+/** Resolve model config. If `explicitModel` is set, looks it up directly (no role routing).
+ *  Otherwise applies env var overrides by role category, then falls back to capability scoring. */
+async function resolveModelConfig(role?: string, explicitModel?: string): Promise<LlamaModelConfig> {
     try {
         const registry = await getRegistry();
-        const overrideKey = META_ROLES.has(role) ? "MODEL_OVERRIDE_META"
-            : IMPL_ROLES.has(role) ? "MODEL_OVERRIDE_IMPL"
+
+        // Explicit model override (e.g. "deepseek-cloud") — direct lookup
+        if (explicitModel) {
+            const model = registry.getModel(explicitModel);
+            if (model) return model.modelConfig;
+        }
+
+        // Env var override by role category
+        const overrideKey = META_ROLES.has(role ?? "") ? "MODEL_OVERRIDE_META"
+            : IMPL_ROLES.has(role ?? "") ? "MODEL_OVERRIDE_IMPL"
             : null;
-        const override = (overrideKey ? process.env[overrideKey] : null)
-            ?? process.env.MODEL_OVERRIDE;
+        const override = (overrideKey ? process.env[overrideKey] : null) ?? process.env.MODEL_OVERRIDE;
         if (override) {
             const model = registry.getModel(override);
             if (model) return model.modelConfig;
-            console.warn(`[registry] override="${override}" not found — using routed model`);
         }
-        const profile = roleToProfile(role);
-        const descriptor = registry.route(profile);
-        return descriptor.modelConfig;
+
+        // Default: capability-scored routing
+        const profile = roleToProfile(role ?? "reasoning");
+        return registry.route(profile).modelConfig;
     } catch {
         return REASONING_MODEL;
     }
 }
 
-// ── Public query functions ──────────────────────────────────────────────────
+// ── Public query API (2 functions: JSON + raw) ──────────────────────────────
 
-export async function queryReasoning<T extends v.GenericSchema>(options: {
+/** Query LLM with JSON schema validation. Pass `model` to force a specific model. */
+export async function queryLlm<T extends v.GenericSchema>(options: {
     userPrompt: string;
     systemPrompt?: string;
     schema: T;
     temperature?: number;
     maxTokens?: number;
-    _role?: LlmRole;
+    role?: string;
+    model?: string;
     preprocess?: (raw: object) => object;
     nonce?: string;
 }): Promise<{ response: v.InferOutput<T>; usage?: any }> {
-    const role = options._role ?? 'reasoning';
-    const modelConfig = await resolveModel(role);
-    return queryLlamaCpp({ ...options, _role: role, modelConfig: modelConfig } as any);
+    const modelConfig = await resolveModelConfig(options.role, options.model);
+    return queryLlamaCpp({ ...options, modelConfig, _role: options.role } as any);
 }
 
-export async function queryRawReasoning(options: {
+/** Query LLM for raw text (no JSON parsing). Pass `model` to force a specific model. */
+export async function queryLlmRaw(options: {
     userPrompt: string;
     systemPrompt?: string;
     temperature?: number;
     maxTokens?: number;
-    _role?: LlmRole;
+    role?: string;
+    model?: string;
     nonce?: string;
 }): Promise<string> {
-    const role = options._role ?? 'prompter';
-    const modelConfig = await resolveModel(role);
-    return queryRaw({ ...options, modelConfig: modelConfig, _role: role });
+    const modelConfig = await resolveModelConfig(options.role, options.model);
+    return queryRaw({ ...options, modelConfig, _role: options.role });
 }
 
-/** Resolve the model for meta-cognitive tasks (those that call queryDeepseek*).
- *  Checks MODEL_OVERRIDE_META first, then defaults to deepseek-cloud.
- *  Falls back to REASONING_MODEL if registry is unavailable. */
-async function resolveDeepseek(): Promise<LlamaModelConfig> {
-    try {
-        const registry = await getRegistry();
-        const override = process.env.MODEL_OVERRIDE_META ?? process.env.MODEL_OVERRIDE;
-        if (override) {
-            const model = registry.getModel(override);
-            if (model) return model.modelConfig;
-            console.warn(`[registry] META override="${override}" not found — using deepseek-cloud`);
-        }
-        const model = registry.getModel("deepseek-cloud");
-        if (model) return model.modelConfig;
-    } catch {}
-    return REASONING_MODEL;
-}
+// ── Backward-compat aliases (for gradual migration) ──────────────────────────
 
-export async function queryDeepseek<T extends v.GenericSchema>(options: {
-    userPrompt: string;
-    systemPrompt?: string;
-    schema: T;
-    temperature?: number;
-    maxTokens?: number;
-    preprocess?: (raw: object) => object;
-}): Promise<{ response: v.InferOutput<T>; usage?: any }> {
-    const modelConfig = await resolveDeepseek();
-    return queryLlamaCpp({ ...options, modelConfig: modelConfig, _role: 'deepseek' } as any);
+export const queryReasoning = queryLlm;
+export const queryRawReasoning = queryLlmRaw;
+export function queryDeepseek<T extends v.GenericSchema>(options: any): Promise<{ response: v.InferOutput<T>; usage?: any }> {
+    return queryLlm({ ...options, model: "deepseek-cloud" });
 }
-
-export async function queryDeepseekRaw(options: {
-    userPrompt: string;
-    systemPrompt?: string;
-    temperature?: number;
-    maxTokens?: number;
-}): Promise<string> {
-    const modelConfig = await resolveDeepseek();
-    return queryRaw({ ...options, modelConfig: modelConfig, _role: 'deepseek-raw' });
+export function queryDeepseekRaw(options: any): Promise<string> {
+    return queryLlmRaw({ ...options, model: "deepseek-cloud" });
 }
-
